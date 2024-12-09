@@ -896,22 +896,21 @@ GROUP BY id_sesion_caja, mov_formapago,id_tipo_movimiento
 
 		$carga_movimiento=[];
 
-		$sql="	select 
-				concepto.con_descripcion as 'descripcion',
-				SUM(if(tipo_movimiento.id_tipo_movimiento=1,movimiento.mov_monto,0)) as 'ingreso',
-				SUM(if(tipo_movimiento.id_tipo_movimiento=2,movimiento.mov_monto,0)) as 'egreso',
-				tipo_movimiento.id_tipo_movimiento,
-				concepto.con_id
-
-				from movimiento 
-				inner join concepto 
-				on concepto.con_id=movimiento.mov_concepto
-				inner join tipo_movimiento on concepto.id_tipo_movimiento=tipo_movimiento.id_tipo_movimiento
-				where movimiento.mov_estado=1 and
-				movimiento.id_sesion_caja   IN (?,?)
-				GROUP BY concepto.con_id
-                 order by concepto.id_tipo_movimiento asc
-				";
+		$sql = "SELECT 
+             concepto.con_descripcion AS 'descripcion',
+             SUM(IF(tipo_movimiento.id_tipo_movimiento=1, movimiento.mov_monto, 0)) AS 'ingreso',
+             SUM(IF(tipo_movimiento.id_tipo_movimiento=2, movimiento.mov_monto, 0)) AS 'egreso',
+             tipo_movimiento.id_tipo_movimiento,
+             concepto.con_id
+        FROM movimiento 
+        INNER JOIN concepto 
+            ON concepto.con_id = movimiento.mov_concepto
+        INNER JOIN tipo_movimiento 
+            ON concepto.id_tipo_movimiento = tipo_movimiento.id_tipo_movimiento
+        WHERE movimiento.mov_estado = 1 
+          AND movimiento.id_sesion_caja IN (?, ?)
+        GROUP BY concepto.con_id, concepto.con_descripcion, tipo_movimiento.id_tipo_movimiento
+        ORDER BY tipo_movimiento.id_tipo_movimiento ASC";
 
 		$c=0;
 		//echo $sesion_ultimo_fisico->id_sesion_caja;exit;
@@ -926,23 +925,22 @@ GROUP BY id_sesion_caja, mov_formapago,id_tipo_movimiento
 			$carga_movimiento["movimiento"][$c]["tipo"]=1;
 
 			$c++;
-			$sql="select 
-					CONCAT(movimiento.mov_descripcion,' ',movimiento.tipo_comprobante_descripcion) as 'descripcion',
-					SUM(if(tipo_movimiento.id_tipo_movimiento=1,movimiento.mov_monto,0)) as 'ingreso',
-					SUM(if(tipo_movimiento.id_tipo_movimiento=2,movimiento.mov_monto,0)) as 'egreso',
-					tipo_movimiento.id_tipo_movimiento,
-					concepto.con_id
-
-					from movimiento 
-					inner join concepto 
-					on concepto.con_id=movimiento.mov_concepto
-					inner join tipo_movimiento on concepto.id_tipo_movimiento=tipo_movimiento.id_tipo_movimiento
-					where movimiento.mov_estado=1
-					and concepto.con_id=? and
-					movimiento.id_sesion_caja  IN (?,?)
-					GROUP BY movimiento.mov_id
-                     ORDER by mov_fecha_tiempo desc
-					 ";
+			$sql = "SELECT 
+            CONCAT(movimiento.mov_descripcion, ' ', movimiento.tipo_comprobante_descripcion) AS 'descripcion',
+            SUM(IF(tipo_movimiento.id_tipo_movimiento = 1, movimiento.mov_monto, 0)) AS 'ingreso',
+            SUM(IF(tipo_movimiento.id_tipo_movimiento = 2, movimiento.mov_monto, 0)) AS 'egreso',
+            MAX(tipo_movimiento.id_tipo_movimiento) AS id_tipo_movimiento, -- Usar MAX o cualquier función de agregación
+            MAX(concepto.con_id) AS con_id -- Usar MAX o cualquier función de agregación
+        FROM movimiento 
+        INNER JOIN concepto 
+            ON concepto.con_id = movimiento.mov_concepto
+        INNER JOIN tipo_movimiento 
+            ON concepto.id_tipo_movimiento = tipo_movimiento.id_tipo_movimiento
+        WHERE movimiento.mov_estado = 1
+        AND concepto.con_id = ?
+        AND movimiento.id_sesion_caja IN (?, ?)
+        GROUP BY movimiento.mov_id
+        ORDER BY movimiento.mov_fecha_tiempo DESC";
  
 				$movimiento_array=$this->db->query($sql,array($value["con_id"],$sesion_ultimo_fisico->id_sesion_caja,$sesion_ultimo_virtual->id_sesion_caja))->result_array();	
 				foreach ($movimiento_array as $key => $value1) {
@@ -967,23 +965,23 @@ GROUP BY id_sesion_caja, mov_formapago,id_tipo_movimiento
 
 
 		$sql="	select 
-				formapago.for_descripcion as 'descripcion',
-				SUM(if(tipo_movimiento.id_tipo_movimiento=1,movimiento.mov_monto,0)) as 'ingreso',
-				SUM(if(tipo_movimiento.id_tipo_movimiento=2,movimiento.mov_monto,0)) as 'egreso',
-				tipo_movimiento.id_tipo_movimiento,
-				concepto.con_id,
-				formapago.for_descripcion,
- movimiento.mov_formapago
-				from movimiento 
-				inner join concepto 
-				on concepto.con_id=movimiento.mov_concepto
-				inner join tipo_movimiento on concepto.id_tipo_movimiento=tipo_movimiento.id_tipo_movimiento
-				INNER JOIN formapago on movimiento.mov_formapago=formapago.for_id
-				where movimiento.mov_estado=1 and
-				movimiento.id_sesion_caja  IN (?,?)
-				GROUP BY movimiento.mov_formapago
-                 order by movimiento.mov_formapago asc
-				";
+		formapago.for_descripcion as 'descripcion',
+		SUM(if(tipo_movimiento.id_tipo_movimiento=1,movimiento.mov_monto,0)) as 'ingreso',
+		SUM(if(tipo_movimiento.id_tipo_movimiento=2,movimiento.mov_monto,0)) as 'egreso',
+		MAX(tipo_movimiento.id_tipo_movimiento) as id_tipo_movimiento, -- Usar MAX o cualquier función de agregación
+		MAX(concepto.con_id) as con_id,
+		MAX(formapago.for_descripcion) as formapago_descripcion,
+		movimiento.mov_formapago
+		from movimiento 
+		inner join concepto 
+		on concepto.con_id=movimiento.mov_concepto
+		inner join tipo_movimiento on concepto.id_tipo_movimiento=tipo_movimiento.id_tipo_movimiento
+		INNER JOIN formapago on movimiento.mov_formapago=formapago.for_id
+		where movimiento.mov_estado=1 and
+		movimiento.id_sesion_caja  IN (?,?)
+		GROUP BY movimiento.mov_formapago
+        order by movimiento.mov_formapago asc
+";
 
 
 $movimiento_informacion=array();
