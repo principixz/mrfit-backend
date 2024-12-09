@@ -3232,7 +3232,31 @@ $cod_venta=$this->db->query("SELECT detalle_venta.id_venta FROM detalle_venta WH
               throw new Exception("Error al decodificar el token: " . json_last_error_msg());
           }
   
-
+          $response = array();
+  
+          // Obtiene los datos del cuerpo de la solicitud
+          $postdata = file_get_contents("php://input");
+          $request = json_decode($postdata, true);
+  
+          if (json_last_error() !== JSON_ERROR_NONE) {
+              throw new Exception("Error al decodificar el cuerpo de la solicitud: " . json_last_error_msg());
+          }
+  
+          // Consulta los datos en la base de datos
+          $data["tabla"] = $this->Mantenimiento_m->consulta3("
+              SELECT 
+                  clientes.cliente_id AS 'id',
+                  clientes.*,
+                  tipo_membresia.tipo_membresia_id,
+                  tipo_membresia.tipo_membresia_descripcion AS 'tipo_membresia_nombre'
+              FROM clientes
+              LEFT JOIN tipo_membresia ON clientes.cliente_tipomembresia = tipo_membresia.tipo_membresia_id
+              WHERE clientes.estado = '1' AND clientes.cliente_nombres IS NOT NULL
+          ");
+  
+          if ($data["tabla"] === false) {
+              throw new Exception("Error al obtener los datos de la base de datos.");
+          }
   
           // Devuelve los datos en formato JSON
           echo json_encode($data);
