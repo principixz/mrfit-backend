@@ -2344,7 +2344,7 @@ public function ws_cerrar_sesion_apertura_caja(){
 
         $ult =$this->Mantenimiento_m->consulta("SELECT Max(sesion_caja.id_sesion_caja) AS ult,sede_caja.id_caja,sede_caja.sede_caja_monto,sede_caja.id_sede_caja FROM sesion_caja
           INNER JOIN sede_caja ON sesion_caja.id_sede_caja = sede_caja.id_sede_caja
-          where sede_caja.id_sede =  '".$data_token['empresa_sede']."' GROUP BY id_caja");
+          where sede_caja.id_sede =  '".$data_token['empresa_sede']."' GROUP BY sede_caja.id_caja, sede_caja.id_sede_caja");
         if(count($ult) != 0){
           $hora = date('H:i');
           foreach ($ult as $values) {
