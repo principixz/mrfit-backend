@@ -137,19 +137,17 @@ class Otl
 		//==============================
 		$this->fontkey = $this->mpdf->CurrentFont['fontkey'];
 		$this->glyphIDtoUni = $this->mpdf->CurrentFont['glyphIDtoUni'];
-		$fontCacheFilename = $this->fontkey . '.GDEFdata.json';
-		if (!isset($this->GDEFdata[$this->fontkey]) && $this->fontCache->jsonHas($fontCacheFilename)) {
-			$font = $this->fontCache->jsonLoad($fontCacheFilename);
-
-			$this->GSUB_offset = $this->GDEFdata[$this->fontkey]['GSUB_offset'] = $font['GSUB_offset'];
-			$this->GPOS_offset = $this->GDEFdata[$this->fontkey]['GPOS_offset'] = $font['GPOS_offset'];
-			$this->GSUB_length = $this->GDEFdata[$this->fontkey]['GSUB_length'] = $font['GSUB_length'];
-			$this->MarkAttachmentType = $this->GDEFdata[$this->fontkey]['MarkAttachmentType'] = $font['MarkAttachmentType'];
-			$this->MarkGlyphSets = $this->GDEFdata[$this->fontkey]['MarkGlyphSets'] = $font['MarkGlyphSets'];
-			$this->GlyphClassMarks = $this->GDEFdata[$this->fontkey]['GlyphClassMarks'] = $font['GlyphClassMarks'];
-			$this->GlyphClassLigatures = $this->GDEFdata[$this->fontkey]['GlyphClassLigatures'] = $font['GlyphClassLigatures'];
-			$this->GlyphClassComponents = $this->GDEFdata[$this->fontkey]['GlyphClassComponents'] = $font['GlyphClassComponents'];
-			$this->GlyphClassBases = $this->GDEFdata[$this->fontkey]['GlyphClassBases'] = $font['GlyphClassBases'];
+		if (!isset($this->GDEFdata[$this->fontkey])) {
+			include $this->fontCache->tempFilename($this->fontkey . '.GDEFdata.php');
+			$this->GSUB_offset = $this->GDEFdata[$this->fontkey]['GSUB_offset'] = $GSUB_offset;
+			$this->GPOS_offset = $this->GDEFdata[$this->fontkey]['GPOS_offset'] = $GPOS_offset;
+			$this->GSUB_length = $this->GDEFdata[$this->fontkey]['GSUB_length'] = $GSUB_length;
+			$this->MarkAttachmentType = $this->GDEFdata[$this->fontkey]['MarkAttachmentType'] = $MarkAttachmentType;
+			$this->MarkGlyphSets = $this->GDEFdata[$this->fontkey]['MarkGlyphSets'] = $MarkGlyphSets;
+			$this->GlyphClassMarks = $this->GDEFdata[$this->fontkey]['GlyphClassMarks'] = $GlyphClassMarks;
+			$this->GlyphClassLigatures = $this->GDEFdata[$this->fontkey]['GlyphClassLigatures'] = $GlyphClassLigatures;
+			$this->GlyphClassComponents = $this->GDEFdata[$this->fontkey]['GlyphClassComponents'] = $GlyphClassComponents;
+			$this->GlyphClassBases = $this->GDEFdata[$this->fontkey]['GlyphClassBases'] = $GlyphClassBases;
 		} else {
 			$this->GSUB_offset = $this->GDEFdata[$this->fontkey]['GSUB_offset'];
 			$this->GPOS_offset = $this->GDEFdata[$this->fontkey]['GPOS_offset'];
@@ -368,18 +366,16 @@ class Otl
 				$this->GSUBfont = $this->fontkey . '.GSUB.' . $GSUBscriptTag . '.' . $GSUBlangsys;
 
 				if (!isset($this->GSUBdata[$this->GSUBfont])) {
-					$fontCacheFilename = $this->GSUBfont . '.json';
-					if ($this->fontCache->jsonHas($fontCacheFilename)) {
-						$font = $this->fontCache->jsonLoad($fontCacheFilename);
-
-						$this->GSUBdata[$this->GSUBfont]['rtlSUB'] = $font['rtlSUB'];
-						$this->GSUBdata[$this->GSUBfont]['finals'] = $font['finals'];
+					if ($this->fontCache->has($this->mpdf->CurrentFont['fontkey'] . '.GSUB.' . $GSUBscriptTag . '.' . $GSUBlangsys . '.php')) {
+						include $this->fontCache->tempFilename($this->mpdf->CurrentFont['fontkey'] . '.GSUB.' . $GSUBscriptTag . '.' . $GSUBlangsys . '.php');
+						$this->GSUBdata[$this->GSUBfont]['rtlSUB'] = $rtlSUB;
+						$this->GSUBdata[$this->GSUBfont]['finals'] = $finals;
 						if ($this->shaper == 'I') {
-							$this->GSUBdata[$this->GSUBfont]['rphf'] = $font['rphf'];
-							$this->GSUBdata[$this->GSUBfont]['half'] = $font['half'];
-							$this->GSUBdata[$this->GSUBfont]['pref'] = $font['pref'];
-							$this->GSUBdata[$this->GSUBfont]['blwf'] = $font['blwf'];
-							$this->GSUBdata[$this->GSUBfont]['pstf'] = $font['pstf'];
+							$this->GSUBdata[$this->GSUBfont]['rphf'] = $rphf;
+							$this->GSUBdata[$this->GSUBfont]['half'] = $half;
+							$this->GSUBdata[$this->GSUBfont]['pref'] = $pref;
+							$this->GSUBdata[$this->GSUBfont]['blwf'] = $blwf;
+							$this->GSUBdata[$this->GSUBfont]['pstf'] = $pstf;
 						}
 					} else {
 						$this->GSUBdata[$this->GSUBfont] = ['rtlSUB' => [], 'rphf' => [], 'rphf' => [],
@@ -388,9 +384,9 @@ class Otl
 					}
 				}
 
-				$fontCacheFilename = $this->fontkey . '.GSUBdata.json';
-				if (!isset($this->GSUBdata[$this->fontkey]) && $this->fontCache->jsonHas($fontCacheFilename)) {
-					$this->GSLuCoverage = $this->GSUBdata[$this->fontkey]['GSLuCoverage'] = $this->fontCache->jsonLoad($fontCacheFilename);
+				if (!isset($this->GSUBdata[$this->fontkey])) {
+					include $this->fontCache->tempFilename($this->fontkey . '.GSUBdata.php');
+					$this->GSLuCoverage = $this->GSUBdata[$this->fontkey]['GSLuCoverage'] = $GSLuCoverage;
 				} else {
 					$this->GSLuCoverage = $this->GSUBdata[$this->fontkey]['GSLuCoverage'];
 				}
@@ -1026,9 +1022,9 @@ class Otl
 
 				// 6. Load GPOS data, Coverage & Lookups
 				//=================================================================
-				$fontCacheFilename = $this->mpdf->CurrentFont['fontkey'] . '.GPOSdata.json';
-				if (!isset($this->GPOSdata[$this->fontkey]) && $this->fontCache->jsonHas($fontCacheFilename)) {
-					$this->LuCoverage = $this->GPOSdata[$this->fontkey]['LuCoverage'] = $this->fontCache->jsonLoad($fontCacheFilename);
+				if (!isset($this->GPOSdata[$this->fontkey])) {
+					include $this->fontCache->tempFilename($this->mpdf->CurrentFont['fontkey'] . '.GPOSdata.php');
+					$this->LuCoverage = $this->GPOSdata[$this->fontkey]['LuCoverage'] = $LuCoverage;
 				} else {
 					$this->LuCoverage = $this->GPOSdata[$this->fontkey]['LuCoverage'];
 				}
@@ -1536,10 +1532,6 @@ class Otl
 										break;
 								}
 								if (!($this->OTLdata[$ptr]['mask'] & $mask)) {
-									continue;
-								}
-
-								if (!isset($this->OTLdata[$ptr + 1])) {
 									continue;
 								}
 
@@ -3105,7 +3097,7 @@ class Otl
 		$ok = true;
 		$matches = [];
 		while ($ok) {
-			$x = ord($dict[$dictptr]);
+			$x = ord($dict{$dictptr});
 			$c = $this->OTLdata[$ptr]['uni'] & 0xFF;
 			if ($x == static::_DICT_INTERMEDIATE_MATCH) {
 //echo "DICT_INTERMEDIATE_MATCH: ".dechex($c).'<br />';
@@ -3124,11 +3116,11 @@ class Otl
 			} elseif ($x == static::_DICT_NODE_TYPE_LINEAR) {
 //echo "DICT_NODE_TYPE_LINEAR: ".dechex($c).'<br />';
 				$dictptr++;
-				$m = ord($dict[$dictptr]);
+				$m = ord($dict{$dictptr});
 				if ($c == $m) {
 					$ptr++;
 					if ($ptr > count($this->OTLdata) - 1) {
-						$next = ord($dict[$dictptr + 1]);
+						$next = ord($dict{$dictptr + 1});
 						if ($next == static::_DICT_INTERMEDIATE_MATCH || $next == static::_DICT_FINAL_MATCH) {
 							// Do not match if next character in text is a Mark
 							if (isset($this->OTLdata[$ptr]['uni']) && strpos($this->GlyphClassMarks, $this->OTLdata[$ptr]['hex']) === false) {
@@ -3146,13 +3138,13 @@ class Otl
 			} elseif ($x == static::_DICT_NODE_TYPE_SPLIT) {
 //echo "DICT_NODE_TYPE_SPLIT ON ".dechex($d).": ".dechex($c).'<br />';
 				$dictptr++;
-				$d = ord($dict[$dictptr]);
+				$d = ord($dict{$dictptr});
 				if ($c < $d) {
 					$dictptr += 5;
 				} else {
 					$dictptr++;
 					// Unsigned long 32-bit offset
-					$offset = (ord($dict[$dictptr]) * 16777216) + (ord($dict[$dictptr + 1]) << 16) + (ord($dict[$dictptr + 2]) << 8) + ord($dict[$dictptr + 3]);
+					$offset = (ord($dict{$dictptr}) * 16777216) + (ord($dict{$dictptr + 1}) << 16) + (ord($dict{$dictptr + 2}) << 8) + ord($dict{$dictptr + 3});
 					$dictptr = $offset;
 				}
 			} else {
@@ -4368,7 +4360,7 @@ class Otl
 			$this->seek($offset);
 			$ClassFormat = $this->read_ushort();
 			$GlyphClass = [];
-			$GlyphByClass = [];
+			//      $GlyphByClass = array(0=>array());  // NB This forces an index[0]
 			if ($ClassFormat == 1) {
 				$StartGlyph = $this->read_ushort();
 				$GlyphCount = $this->read_ushort();
@@ -4684,7 +4676,7 @@ class Otl
 				} else {
 					$gpos = '';
 				}
-				$chardata[] = ['char' => $chunkOTLdata['char_data'][$i]['uni'], 'level' => $cel, 'type' => $chardir, 'group' => $chunkOTLdata['group'][$i], 'GPOSinfo' => $gpos];
+				$chardata[] = ['char' => $chunkOTLdata['char_data'][$i]['uni'], 'level' => $cel, 'type' => $chardir, 'group' => $chunkOTLdata['group']{$i}, 'GPOSinfo' => $gpos];
 			}
 		}
 
@@ -5392,7 +5384,7 @@ class Otl
 									$nc2++;
 									$i2 = 0;
 								}
-								if (!isset($para[$nc2][18]['char_data'][$i2]['diid']) || $para[$nc2][18]['char_data'][$i2]['diid'] != $ir) {
+								if ($para[$nc2][18]['char_data'][$i2]['diid'] != $ir) {
 									continue;
 								}
 								$nexttype = $para[$nc2][18]['char_data'][$i2]['type'];
@@ -5571,47 +5563,37 @@ class Otl
 	 */
 	public function bidiReorder(&$chunkorder, &$content, &$cOTLdata, $blockdir)
 	{
+
 		$bidiData = [];
 
 		// First combine into one array (and get the highest level in use)
 		$numchunks = count($content);
 		$maxlevel = 0;
-
 		for ($nc = 0; $nc < $numchunks; $nc++) {
-
-			$numchars = isset($cOTLdata[$nc]['char_data']) ? count($cOTLdata[$nc]['char_data']) : 0;
+			$numchars = count($cOTLdata[$nc]['char_data']);
 			for ($i = 0; $i < $numchars; ++$i) {
-
-				$carac = [
-					'level' => 0,
-				];
-
+				$carac = [];
 				if (isset($cOTLdata[$nc]['GPOSinfo'][$i])) {
 					$carac['GPOSinfo'] = $cOTLdata[$nc]['GPOSinfo'][$i];
 				}
-
 				$carac['uni'] = $cOTLdata[$nc]['char_data'][$i]['uni'];
-
 				if (isset($cOTLdata[$nc]['char_data'][$i]['type'])) {
 					$carac['type'] = $cOTLdata[$nc]['char_data'][$i]['type'];
 				}
-
 				if (isset($cOTLdata[$nc]['char_data'][$i]['level'])) {
 					$carac['level'] = $cOTLdata[$nc]['char_data'][$i]['level'];
 				}
-
 				if (isset($cOTLdata[$nc]['char_data'][$i]['orig_type'])) {
 					$carac['orig_type'] = $cOTLdata[$nc]['char_data'][$i]['orig_type'];
 				}
-
-				$carac['group'] = $cOTLdata[$nc]['group'][$i];
+				$carac['group'] = $cOTLdata[$nc]['group']{$i};
 				$carac['chunkid'] = $chunkorder[$nc]; // gives font id and/or object ID
 
 				$maxlevel = max((isset($carac['level']) ? $carac['level'] : 0), $maxlevel);
 				$bidiData[] = $carac;
 			}
 		}
-		if ($maxlevel === 0) {
+		if ($maxlevel == 0) {
 			return;
 		}
 
@@ -5625,7 +5607,7 @@ class Otl
 		//  The types of characters used here are the original types, not those modified by the previous phase cf N1 and N2*******
 		//  Because a Paragraph Separator breaks lines, there will be at most one per line, at the end of that line.
 		// Set the initial paragraph embedding level
-		if ($blockdir === 'rtl') {
+		if ($blockdir == 'rtl') {
 			$pel = 1;
 		} else {
 			$pel = 0;
@@ -5645,7 +5627,6 @@ class Otl
 			$revarr = [];
 			$onlevel = false;
 			for ($i = 0; $i < $numchars; ++$i) {
-
 				if ($bidiData[$i]['level'] >= $j) {
 					$onlevel = true;
 					// L4. A character is depicted by a mirrored glyph if and only if (a) the resolved directionality of that character is R, and (b) the Bidi_Mirrored property value of that character is true.
@@ -5654,25 +5635,20 @@ class Otl
 					}
 
 					$revarr[] = $bidiData[$i];
-
 				} else {
-
 					if ($onlevel) {
 						$revarr = array_reverse($revarr);
 						$ordarray = array_merge($ordarray, $revarr);
 						$revarr = [];
 						$onlevel = false;
 					}
-
 					$ordarray[] = $bidiData[$i];
 				}
 			}
-
 			if ($onlevel) {
 				$revarr = array_reverse($revarr);
 				$ordarray = array_merge($ordarray, $revarr);
 			}
-
 			$bidiData = $ordarray;
 		}
 
@@ -5811,7 +5787,7 @@ class Otl
 
 	public function trimOTLdata(&$cOTLdata, $Left = true, $Right = true)
 	{
-		$len = (!is_array($cOTLdata) || $cOTLdata['char_data'] === null) ? 0 : count($cOTLdata['char_data']);
+		$len = $cOTLdata['char_data'] === null ? 0 : count($cOTLdata['char_data']);
 		$nLeft = 0;
 		$nRight = 0;
 		for ($i = 0; $i < $len; $i++) {
@@ -6155,25 +6131,16 @@ class Otl
 		if ($available == '') {
 			return '';
 		}
-
-		$tags = $ietf
-			? preg_split('/-/', $ietf)
-			: [];
-
+		$tags = preg_split('/-/', $ietf);
 		$lang = '';
 		$country = '';
 		$script = '';
-
-		$lang = isset($tags[0])
-			? strtolower($tags[0])
-			: '';
-
+		$lang = strtolower($tags[0]);
 		if (isset($tags[1]) && $tags[1]) {
 			if (strlen($tags[1]) == 2) {
 				$country = strtolower($tags[1]);
 			}
 		}
-
 		if (isset($tags[2]) && $tags[2]) {
 			$country = strtolower($tags[2]);
 		}
@@ -6185,7 +6152,6 @@ class Otl
 		} else {
 			$langsys = "DFLT";
 		}
-
 		if (strpos($available, $langsys) === false) {
 			if (strpos($available, "DFLT") !== false) {
 				return "DFLT";
@@ -6193,7 +6159,6 @@ class Otl
 				return '';
 			}
 		}
-
 		return $langsys;
 	}
 

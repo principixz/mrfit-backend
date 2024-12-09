@@ -3,6 +3,7 @@
 namespace Mpdf\Writer;
 
 use Mpdf\Strict;
+
 use Mpdf\Fonts\FontCache;
 use Mpdf\Mpdf;
 use Mpdf\TTFontFile;
@@ -75,9 +76,9 @@ class FontWriter
 					$originalsize = $info['length1'];
 					if ($this->mpdf->repackageTTF || $this->mpdf->fonts[$fontkey]['TTCfontID'] > 0 || $this->mpdf->fonts[$fontkey]['useOTL'] > 0) { // mPDF 5.7.1
 						// First see if there is a cached compressed file
-						if ($this->fontCache->has($fontkey . '.ps.z') && $this->fontCache->jsonHas($fontkey . '.ps.json')) {
+						if ($this->fontCache->has($fontkey . '.ps.z')) {
 							$font = $this->fontCache->load($fontkey . '.ps.z');
-							$originalsize = $this->fontCache->jsonLoad($fontkey . '.ps.json');  // sets $originalsize (of repackaged font)
+							include $this->fontCache->tempFilename($fontkey . '.ps.php'); // sets $originalsize (of repackaged font)
 						} else {
 							$ttf = new TTFontFile($this->fontCache, $this->fontDescriptor);
 							$font = $ttf->repackageTTF($this->mpdf->FontFiles[$fontkey]['ttffile'], $this->mpdf->fonts[$fontkey]['TTCfontID'], $this->mpdf->debugfonts, $this->mpdf->fonts[$fontkey]['useOTL']); // mPDF 5.7.1
@@ -86,8 +87,11 @@ class FontWriter
 							$font = gzcompress($font);
 							unset($ttf);
 
+							$len = "<?php \n";
+							$len .= '$originalsize=' . $originalsize . ";\n";
+
 							$this->fontCache->binaryWrite($fontkey . '.ps.z', $font);
-							$this->fontCache->jsonWrite($fontkey . '.ps.json', $originalsize);
+							$this->fontCache->write($fontkey . '.ps.php', $len);
 						}
 					} elseif ($this->fontCache->has($fontkey . '.z')) {
 						$font = $this->fontCache->load($fontkey . '.z');
@@ -442,34 +446,37 @@ class FontWriter
 
 	private function writeTTFontWidths(&$font, $asSubset, $maxUni) // _putTTfontwidths
 	{
-		$character = [
-			'startcid' => 1,
-			'rangeid' => 0,
-			'prevcid' => -2,
-			'prevwidth' => -1,
-			'interval' => false,
-			'range' => [],
-		];
-
-		$fontCacheFilename = $font['fontkey'] . '.cw127.json';
-		if ($asSubset && $this->fontCache->jsonHas($fontCacheFilename)) {
-			$character = $this->fontCache->jsonLoad($fontCacheFilename);
-			$character['startcid'] = 128;
+		if ($asSubset && $this->fontCache->has($font['fontkey'] . '.cw127.php')) {
+			include $this->fontCache->tempFilename($font['fontkey'] . '.cw127.php');
+			$startcid = 128;
+		} else {
+			$rangeid = 0;
+			$range = [];
+			$prevcid = -2;
+			$prevwidth = -1;
+			$interval = false;
+			$startcid = 1;
+		}
+		if ($asSubset) {
+			$cwlen = $maxUni + 1;
+		} else {
+			$cwlen = (strlen($font['cw']) / 2);
 		}
 
 		// for each character
-		$cwlen = ($asSubset) ? $maxUni + 1 : (strlen($font['cw']) / 2);
-		for ($cid = $character['startcid']; $cid < $cwlen; $cid++) {
-			if ($cid == 128 && $asSubset && (!$this->fontCache->has($fontCacheFilename))) {
-				$character = [
-					'rangeid' => $character['rangeid'],
-					'prevcid' => $character['prevcid'],
-					'prevwidth' => $character['prevwidth'],
-					'interval' => $character['interval'],
-					'range' => $character['range'],
-				];
-
-				$this->fontCache->jsonWrite($fontCacheFilename, $character);
+		for ($cid = $startcid; $cid < $cwlen; $cid++) {
+			if ($cid == 128 && $asSubset && (!$this->fontCache->has($font['fontkey'] . '.cw127.php'))) {
+				$cw127 = '<?php' . "\n";
+				$cw127 .= '$rangeid=' . $rangeid . ";\n";
+				$cw127 .= '$prevcid=' . $prevcid . ";\n";
+				$cw127 .= '$prevwidth=' . $prevwidth . ";\n";
+				if ($interval) {
+					$cw127 .= '$interval=true' . ";\n";
+				} else {
+					$cw127 .= '$interval=false' . ";\n";
+				}
+				$cw127 .= '$range=' . var_export($range, true) . ";\n";
+				$this->fontCache->write($font['fontkey'] . '.cw127.php', $cw127);
 			}
 
 			$character1 = isset($font['cw'][$cid * 2]) ? $font['cw'][$cid * 2] : '';
@@ -494,44 +501,44 @@ class FontWriter
 			} // mPDF 6
 
 			if (!isset($font['dw']) || (isset($font['dw']) && $width != $font['dw'])) {
-				if ($cid === ($character['prevcid'] + 1)) {
+				if ($cid === ($prevcid + 1)) {
 					// consecutive CID
-					if ($width === $character['prevwidth']) {
-						if (isset($character['range'][$character['rangeid']][0]) && $width === $character['range'][$character['rangeid']][0]) {
-							$character['range'][$character['rangeid']][] = $width;
+					if ($width === $prevwidth) {
+						if ($width === $range[$rangeid][0]) {
+							$range[$rangeid][] = $width;
 						} else {
-							array_pop($character['range'][$character['rangeid']]);
+							array_pop($range[$rangeid]);
 							// new range
-							$character['rangeid'] = $character['prevcid'];
-							$character['range'][$character['rangeid']] = [];
-							$character['range'][$character['rangeid']][] = $character['prevwidth'];
-							$character['range'][$character['rangeid']][] = $width;
+							$rangeid = $prevcid;
+							$range[$rangeid] = [];
+							$range[$rangeid][] = $prevwidth;
+							$range[$rangeid][] = $width;
 						}
-						$character['interval'] = true;
-						$character['range'][$character['rangeid']]['interval'] = true;
+						$interval = true;
+						$range[$rangeid]['interval'] = true;
 					} else {
-						if ($character['interval']) {
+						if ($interval) {
 							// new range
-							$character['rangeid'] = $cid;
-							$character['range'][$character['rangeid']] = [];
-							$character['range'][$character['rangeid']][] = $width;
+							$rangeid = $cid;
+							$range[$rangeid] = [];
+							$range[$rangeid][] = $width;
 						} else {
-							$character['range'][$character['rangeid']][] = $width;
+							$range[$rangeid][] = $width;
 						}
-						$character['interval'] = false;
+						$interval = false;
 					}
 				} else {
 					// new range
-					$character['rangeid'] = $cid;
-					$character['range'][$character['rangeid']] = [];
-					$character['range'][$character['rangeid']][] = $width;
-					$character['interval'] = false;
+					$rangeid = $cid;
+					$range[$rangeid] = [];
+					$range[$rangeid][] = $width;
+					$interval = false;
 				}
-				$character['prevcid'] = $cid;
-				$character['prevwidth'] = $width;
+				$prevcid = $cid;
+				$prevwidth = $width;
 			}
 		}
-		$w = $this->writeFontRanges($character['range']);
+		$w = $this->writeFontRanges($range);
 		$this->writer->write($w);
 		if (!$asSubset) {
 			$this->fontCache->binaryWrite($font['fontkey'] . '.cw', $w);
