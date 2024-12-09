@@ -1648,7 +1648,7 @@ public function procesar_venta_pago()
                 $value["monto"],
                 $value["forma_pago"],
                 $concepto,
-                $descripcion,
+                $nombreMembresia,
                 $tipomovimiento,
                 $id_tipo_comprobante,
                 $descripcion_comprobante
@@ -1733,112 +1733,119 @@ public function procesar_venta_pago()
     exit();
 }
 
-private function insertar_membresia($pedidoServicio, $idTipoMembresia, $cantidadMeses, $costoMembresia,$idventa){
-    $this->db->trans_begin(); // Iniciar transacción
+private function insertar_membresia($pedidoServicio, $idTipoMembresia, $cantidadMeses, $costoMembresia, $idventa) {
+  $this->db->trans_begin(); // Iniciar transacción
 
-    try {
-        foreach ($pedidoServicio as $cliente) {
-            // Verificar si el cliente existe
-            $cliente_db = $this->db->get_where('clientes', ['cliente_id' => $cliente['id']])->row();
-            if (!$cliente_db) {
-                // Comentado el rollback
-                // $this->db->trans_rollback();
-                return [
-                    'estado' => false,
-                    'mensaje' => "El cliente con ID {$cliente['id']} no existe."
-                ];
-            }
+  try {
+      foreach ($pedidoServicio as $cliente) {
+          // Verificar si el cliente existe
+          $cliente_db = $this->db->get_where('clientes', ['cliente_id' => $cliente['id']])->row();
+          if (!$cliente_db) {
+              $this->db->trans_rollback();
+              return [
+                  'estado' => false,
+                  'mensaje' => "El cliente con ID {$cliente['id']} no existe."
+              ];
+          }
 
-            // Buscar membresías activas del cliente
-            $membresias = $this->db->select('*')
-                ->from('membresia')
-                ->where('cliente_id', $cliente['id'])
-                ->where('membresia_fecha_fin >', date('Y-m-d'))
-                ->order_by('membresia_fecha_fin', 'DESC')
-                ->get()
-                ->result();
-            $ultima_fecha_fin = count($membresias) > 0 ? $membresias[0]->membresia_fecha_fin : date('Y-m-d');
+          // Determinar última fecha de vencimiento
+          $ultima_fecha_fin = null;
+          if ($cliente_db->cliente_estado_fechavencimiento == 1) {
+              $ultima_fecha_fin = $cliente_db->fechaFinMembresia;
+          } else {
+              $membresias = $this->db->select('*')
+                  ->from('membresia')
+                  ->where('cliente_id', $cliente['id'])
+                  ->where('membresia_fecha_fin >', date('Y-m-d'))
+                  ->order_by('membresia_fecha_fin', 'DESC')
+                  ->get()
+                  ->result();
+              $ultima_fecha_fin = count($membresias) > 0 ? $membresias[0]->membresia_fecha_fin : date('Y-m-d');
+          }
 
-            // Obtener información del tipo de membresía
-            $tipo_membresia = $this->db->get_where('tipo_membresia', [
-                'tipo_membresia_id' => $idTipoMembresia,
-                'tipo_membresia_estado' => 1
-            ])->row();
-            if (!$tipo_membresia) {
-                // Comentado el rollback
-                // $this->db->trans_rollback();
-                return [
-                    'estado' => false,
-                    'mensaje' => "El tipo de membresía con ID {$idTipoMembresia} no está activo o no existe."
-                ];
-            }
+          // Obtener información del tipo de membresía
+          $tipo_membresia = $this->db->get_where('tipo_membresia', [
+              'tipo_membresia_id' => $idTipoMembresia,
+              'tipo_membresia_estado' => 1
+          ])->row();
+          if (!$tipo_membresia) {
+              $this->db->trans_rollback();
+              return [
+                  'estado' => false,
+                  'mensaje' => "El tipo de membresía con ID {$idTipoMembresia} no está activo o no existe."
+              ];
+          }
 
-            // Validar fechas si tipo_membresia_tipoperiodo = 02
-            if (
-                $tipo_membresia->tipo_membresia_tipoperiodo == '02' &&
-                (
-                    $tipo_membresia->tipo_membresia_fechainicio > date('Y-m-d') ||
-                    $tipo_membresia->tipo_membresia_fechafin < date('Y-m-d')
-                )
-            ) {
-                // Comentado el rollback
-                // $this->db->trans_rollback();
-                return [
-                    'estado' => false,
-                    'mensaje' => 'La membresía ha cumplido su ciclo o está fuera del rango de fechas.'
-                ];
-            }
+          // Validar fechas si tipo_membresia_tipoperiodo = 02
+          if (
+              $tipo_membresia->tipo_membresia_tipoperiodo == '02' &&
+              (
+                  $tipo_membresia->tipo_membresia_fechainicio > date('Y-m-d') ||
+                  $tipo_membresia->tipo_membresia_fechafin < date('Y-m-d')
+              )
+          ) {
+              $this->db->trans_rollback();
+              return [
+                  'estado' => false,
+                  'mensaje' => 'La membresía ha cumplido su ciclo o está fuera del rango de fechas.'
+              ];
+          }
 
-            // Calcular nueva fecha de vencimiento
-            $fecha_inicio = new DateTime($ultima_fecha_fin);
-            $duracion = (int) $tipo_membresia->tipo_membresia_duracion;
-            $duracion_total = $duracion * $cantidadMeses;
+          // Calcular nueva fecha de vencimiento
+          $fecha_inicio = new DateTime($ultima_fecha_fin);
+          $duracion = (int) $tipo_membresia->tipo_membresia_duracion;
+          $duracion_total = $duracion * $cantidadMeses;
 
-            switch ($tipo_membresia->tipo_membresia_tipopago) {
-                case '1': // Diario
-                    $fecha_inicio->modify("+{$duracion_total} days");
-                    break;
-                case '2': // Mensual
-                    $fecha_inicio->modify("+{$duracion_total} months");
-                    break;
-                case '3': // Anual
-                    $fecha_inicio->modify("+{$duracion_total} years");
-                    break;
-            }
+          switch ($tipo_membresia->tipo_membresia_tipopago) {
+              case '1': // Diario
+                  $fecha_inicio->modify("+{$duracion_total} days");
+                  break;
+              case '2': // Mensual
+                  $fecha_inicio->modify("+{$duracion_total} months");
+                  break;
+              case '3': // Anual
+                  $fecha_inicio->modify("+{$duracion_total} years");
+                  break;
+          }
 
-            // Adicionar $cantidadMeses
-            $nueva_fecha_fin = $fecha_inicio->format('Y-m-d');
+          $nueva_fecha_fin = $fecha_inicio->format('Y-m-d');
 
-            // Insertar nueva membresía
-            $data = [
-                'cliente_id' => $cliente['id'],
-                'tipo_membresia_id' => $idTipoMembresia,
-                'membresia_fecha_inicio' => $ultima_fecha_fin,
-                'membresia_fecha_fin' => $nueva_fecha_fin,
-                'membresia_precio_mes' => $costoMembresia,
-                'membresia_meses' => $duracion_total,
-                'membresia_fecha_registro' => date('Y-m-d'),
-                'membresia_idventa' => $idventa
-            ];
+          // Actualizar cliente con nueva fecha de vencimiento y cambiar estado
+          $this->db->where('cliente_id', $cliente['id']);
+          $this->db->update('clientes', [
+              'fechaFinMembresia' => $nueva_fecha_fin,
+              'cliente_estado_fechavencimiento' => 0
+          ]);
 
-            $this->db->insert('membresia', $data);
-        }
+          // Insertar nueva membresía
+          $data = [
+              'cliente_id' => $cliente['id'],
+              'tipo_membresia_id' => $idTipoMembresia,
+              'membresia_fecha_inicio' => $ultima_fecha_fin,
+              'membresia_fecha_fin' => $nueva_fecha_fin,
+              'membresia_precio_mes' => $costoMembresia,
+              'membresia_meses' => $duracion_total,
+              'membresia_fecha_registro' => date('Y-m-d'),
+              'membresia_idventa' => $idventa
+          ];
 
-        // Si todo es exitoso, confirmar transacción
-        $this->db->trans_commit();
-        return [
-            'estado' => true,
-            'mensaje' => 'Membresías procesadas correctamente.'
-        ];
+          $this->db->insert('membresia', $data);
+      }
 
-    } catch (Exception $e) {
-        // Si ocurre algún error, realizar rollback (comentado aquí)
-          $this->db->trans_rollback();
-        return [
-            'estado' => false,
-            'mensaje' => 'Error al procesar la membresía: ' . $e->getMessage()
-        ];
-    }
+      // Confirmar transacción
+      $this->db->trans_commit();
+      return [
+          'estado' => true,
+          'mensaje' => 'Membresías procesadas correctamente.'
+      ];
+
+  } catch (Exception $e) {
+      $this->db->trans_rollback();
+      return [
+          'estado' => false,
+          'mensaje' => 'Error al procesar la membresía: ' . $e->getMessage()
+      ];
+  }
 }
 
 
@@ -2119,7 +2126,7 @@ public function ws_sesion_traerfisica(){
       WHERE
       sesion_caja.id_sesion_caja = ".$request["cajafisica"]." AND
       tipo_movimiento.id_tipo_movimiento = 2
-      GROUP BY HOUR(movimiento.mov_hora)
+      GROUP BY movimiento.mov_fecha, HOUR(movimiento.mov_hora), YEAR(movimiento.mov_fecha), MONTH(movimiento.mov_fecha), DAY(movimiento.mov_fecha)
       ORDER BY HOUR(movimiento.mov_hora)");
     $nombre = "Compras del Día";
     $guardar["data"]["compras"]["name"] = $nombre;
@@ -2140,7 +2147,7 @@ public function ws_sesion_traerfisica(){
       WHERE
       sesion_caja.id_sesion_caja = ".$request["cajafisica"]." AND
       tipo_movimiento.id_tipo_movimiento = 1
-      GROUP BY HOUR(movimiento.mov_hora)
+      GROUP BY movimiento.mov_fecha, HOUR(movimiento.mov_hora), YEAR(movimiento.mov_fecha), MONTH(movimiento.mov_fecha), DAY(movimiento.mov_fecha)
       ORDER BY HOUR(movimiento.mov_hora)");
     $nombre = "Ventas del Día";
     $guardar["data"]["ventas"]["name"] = $nombre;
@@ -2171,7 +2178,7 @@ public function ws_sesion_traerfisica(){
       WHERE
       sesion_caja.id_sesion_caja = ".$request["cajavirtual"]." AND
       tipo_movimiento.id_tipo_movimiento = 2
-      GROUP BY HOUR(movimiento.mov_hora)
+      GROUP BY movimiento.mov_fecha, HOUR(movimiento.mov_hora), YEAR(movimiento.mov_fecha), MONTH(movimiento.mov_fecha), DAY(movimiento.mov_fecha)
       ORDER BY HOUR(movimiento.mov_hora)");
     $nombre = "Compras del Día";
     $guardar["data"]["compras"]["name"] = $nombre;
@@ -2192,7 +2199,7 @@ public function ws_sesion_traerfisica(){
       WHERE
       sesion_caja.id_sesion_caja = ".$request["cajavirtual"]." AND
       tipo_movimiento.id_tipo_movimiento = 1
-      GROUP BY HOUR(movimiento.mov_hora)
+      GROUP BY movimiento.mov_fecha, HOUR(movimiento.mov_hora), YEAR(movimiento.mov_fecha), MONTH(movimiento.mov_fecha), DAY(movimiento.mov_fecha)
       ORDER BY HOUR(movimiento.mov_hora)");
     $nombre = "Ventas del Día";
     $guardar["data"]["ventas"]["name"] = $nombre;
@@ -3223,7 +3230,16 @@ $cod_venta=$this->db->query("SELECT detalle_venta.id_venta FROM detalle_venta WH
       $postdata = file_get_contents("php://input");
       $request = json_decode($postdata,true); 
 
-        $data["tabla"]=$this->Mantenimiento_m->consulta3("select clientes.cliente_id as 'id',clientes.*  from clientes where estado='1' ");
+      $data["tabla"] = $this->Mantenimiento_m->consulta3("
+          SELECT 
+              clientes.cliente_id AS 'id',
+              clientes.*,
+              tipo_membresia.tipo_membresia_id,
+              tipo_membresia.tipo_membresia_descripcion AS 'tipo_membresia_nombre'
+          FROM clientes
+          LEFT JOIN tipo_membresia ON clientes.cliente_tipomembresia = tipo_membresia.tipo_membresia_id
+          WHERE clientes.estado = '1' AND clientes.cliente_nombres != 'null'
+      ");
         echo json_encode($data);
 
     }

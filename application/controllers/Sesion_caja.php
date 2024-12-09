@@ -578,7 +578,7 @@ GROUP BY id_sesion_caja, mov_formapago,id_tipo_movimiento
 		$traermovimientos = $this->Mantenimiento_m->consulta3("SELECT producto.producto_id,movimiento.mov_id,venta.venta_idventas,compras.compra_id,detalle_venta.estado_descuento,
 		IF(detalle_venta.estado_descuento != 'DS','AGRUP',IF(detalle_venta.estado_descuento IS NOT NULL,CONCAT( detalle_venta.estado_descuento, '_', producto.producto_id, '_', detalle_venta.precio ),	movimiento.mov_id ) ) AS agrupador,
 		IF( movimiento.mov_formapago = 1, 'F', 'V' ) AS formapago,
-		IF	( categoria_producto.categoria_producto_id IS NULL, 'BEBIDAS', categoria_producto.categoria_producto_descripcion ) AS categoria,
+		IF	( categoria_producto.categoria_producto_id IS NULL, 'SERVICIOS', categoria_producto.categoria_producto_descripcion ) AS categoria,
 		CASE WHEN venta.venta_idventas IS NOT NULL THEN	producto.producto_descripcion 
 		ELSE movimiento.mov_descripcion END AS producto_descripcion,
 		CASE WHEN venta.venta_idventas IS NOT NULL THEN	SUM( detalle_venta.cantidad ) 
@@ -603,7 +603,7 @@ GROUP BY id_sesion_caja, mov_formapago,id_tipo_movimiento
 		END AS tipomov 
 		FROM
 		movimiento
-		LEFT JOIN venta ON venta.venta_idmovimiento = movimiento.mov_id
+		LEFT JOIN venta ON venta.venta_idventas = movimiento.venta_idventas
 		LEFT JOIN compras ON movimiento.mov_id = compras.compra_idmovimiento
 		LEFT JOIN detalle_venta ON detalle_venta.id_venta = venta.venta_idventas
 		LEFT JOIN detalle_compras ON detalle_compras.compra_id = compras.compra_id
@@ -616,7 +616,7 @@ GROUP BY id_sesion_caja, mov_formapago,id_tipo_movimiento
 
 		$consulta_delivery=$this->Mantenimiento_m->consulta3(" SELECT 'Costo Delivery' as descripcion,detalle_venta.precio as 'venta_monto_delivery',venta.venta_idventas
 from movimiento
-LEFT JOIN venta ON venta.venta_idmovimiento = movimiento.mov_id
+LEFT JOIN venta ON venta.venta_idventas = movimiento.venta_idventas
 inner join detalle_venta on venta.venta_idventas=detalle_venta.id_venta
 where detalle_venta.cod_producto_venta=9999 and
 venta.venta_estado!='0' and (movimiento.id_sesion_caja =".$sesion_caja[0]->id_sesion_caja." OR movimiento.id_sesion_caja = ".$sesion_caja[1]->id_sesion_caja.")");
@@ -1060,16 +1060,14 @@ GROUP BY id_sesion_caja, mov_formapago,id_tipo_movimiento
 		$traermovimientos = $this->Mantenimiento_m->consulta3("SELECT producto.producto_id,movimiento.mov_id,venta.venta_idventas,compras.compra_id,detalle_venta.estado_descuento,
 		IF(detalle_venta.estado_descuento != 'DS','AGRUP',IF(detalle_venta.estado_descuento IS NOT NULL,CONCAT( detalle_venta.estado_descuento, '_', producto.producto_id, '_', detalle_venta.precio ),	movimiento.mov_id ) ) AS agrupador,
 		IF( movimiento.mov_formapago = 1, 'F', 'V' ) AS formapago,
-		IF	( categoria_producto.categoria_producto_id IS NULL, 'BEBIDAS', categoria_producto.categoria_producto_descripcion ) AS categoria,
-		CASE WHEN venta.venta_idventas IS NOT NULL THEN	producto.producto_descripcion 
+		IF	( categoria_producto.categoria_producto_id IS NULL, 'SERVICIO', categoria_producto.categoria_producto_descripcion ) AS categoria,
+		CASE WHEN venta.venta_idventas IS NOT NULL THEN	movimiento.mov_descripcion 
 		ELSE movimiento.mov_descripcion END AS producto_descripcion,
-		CASE WHEN venta.venta_idventas IS NOT NULL THEN	SUM( detalle_venta.cantidad ) 
-		WHEN ( compras.compra_id IS NOT NULL ) THEN	SUM( detalle_compras.detalle_compra_cantidad ) ELSE '1' 
-		END AS cantidad,
-		CASE WHEN venta.venta_idventas IS NOT NULL THEN	ROUND( AVG( detalle_venta.precio ), 2 ) 
+		1 AS cantidad,
+		CASE WHEN venta.venta_idventas IS NOT NULL THEN	ROUND(AVG(venta.venta_monto), 2)
 		WHEN ( compras.compra_id IS NOT NULL ) THEN	ROUND( AVG( detalle_compras.detalle_compra_preciounitatio ), 2 ) ELSE movimiento.mov_monto 
 		END AS precio,
-		CASE WHEN venta.venta_idventas IS NOT NULL THEN ROUND( ( SUM( detalle_venta.cantidad ) * AVG( detalle_venta.precio ) ), 2 ) 
+		CASE WHEN venta.venta_idventas IS NOT NULL THEN ROUND( ( 1 * AVG( venta.venta_monto ) ), 2 ) 
 		WHEN ( compras.compra_id IS NOT NULL ) THEN	ROUND( ( SUM( detalle_compras.detalle_compra_cantidad ) * AVG( detalle_compras.detalle_compra_preciounitatio ) * ( - 1 ) ), 2 ) 
 		WHEN ( venta.venta_idventas IS NULL AND compras.compra_id IS NULL ) AND concepto.id_tipo_movimiento = 1 THEN movimiento.mov_monto 
 		WHEN ( venta.venta_idventas IS NULL AND compras.compra_id IS NULL ) AND concepto.id_tipo_movimiento = 2 THEN ( ( - 1 ) * movimiento.mov_monto ) 
@@ -1085,20 +1083,32 @@ GROUP BY id_sesion_caja, mov_formapago,id_tipo_movimiento
 		END AS tipomov 
 		FROM
 		movimiento
-		LEFT JOIN venta ON venta.venta_idmovimiento = movimiento.mov_id
+		LEFT JOIN venta ON venta.venta_idventas = movimiento.venta_idventas
 		LEFT JOIN compras ON movimiento.mov_id = compras.compra_idmovimiento
 		LEFT JOIN detalle_venta ON detalle_venta.id_venta = venta.venta_idventas
 		LEFT JOIN detalle_compras ON detalle_compras.compra_id = compras.compra_id
 		LEFT JOIN producto ON detalle_venta.cod_producto_venta = producto.producto_id  
  		LEFT JOIN categoria_producto ON producto.categoria_producto_id = categoria_producto.categoria_producto_id		
  		LEFT JOIN concepto ON movimiento.mov_concepto = concepto.con_id 
-		WHERE detalle_venta.estado_pedido=1 and  movimiento.mov_estado = 1 and (movimiento.id_sesion_caja =".$sesion_caja[0]->id_sesion_caja." OR movimiento.id_sesion_caja = ".$sesion_caja[1]->id_sesion_caja.")   
-		GROUP BY producto.producto_id,tipomov,detalle_venta.estado_descuento,agrupador 
+		WHERE movimiento.mov_estado = 1 and (movimiento.id_sesion_caja =".$sesion_caja[0]->id_sesion_caja." OR movimiento.id_sesion_caja = ".$sesion_caja[1]->id_sesion_caja.")   
+		GROUP BY
+		producto.producto_id,
+		tipomov,
+		detalle_venta.estado_descuento,
+		agrupador,
+		movimiento.mov_id,
+		venta.venta_idventas,
+		compras.compra_id,
+		movimiento.mov_formapago,
+		categoria_producto.categoria_producto_id,
+		categoria_producto.categoria_producto_descripcion,
+		concepto.id_tipo_movimiento,
+		concepto.con_descripcion
 		ORDER BY tipomov,categoria_producto.categoria_producto_id,compras.compra_id,venta.venta_idventas,movimiento.mov_id"); 
 
 		$consulta_delivery=$this->Mantenimiento_m->consulta3(" SELECT 'Costo Delivery' as descripcion,detalle_venta.precio as 'venta_monto_delivery',venta.venta_idventas
 from movimiento
-LEFT JOIN venta ON venta.venta_idmovimiento = movimiento.mov_id
+LEFT JOIN venta ON venta.venta_idventas = movimiento.venta_idventas
 inner join detalle_venta on venta.venta_idventas=detalle_venta.id_venta
 where detalle_venta.cod_producto_venta=9999 and
 venta.venta_estado!='0' and (movimiento.id_sesion_caja =".$sesion_caja[0]->id_sesion_caja." OR movimiento.id_sesion_caja = ".$sesion_caja[1]->id_sesion_caja.")");

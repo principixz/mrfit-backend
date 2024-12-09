@@ -290,6 +290,7 @@ class Membresias extends BaseController {
                 'categoria_membresia' => 'tipo_membresia_categoriamembresia',
                 'tipo_durabilidad' => 'tipo_membresia_tipopago',
                 'cantidad_personas' => 'tipo_membresia_cantidadpersona',
+                'estadoTrotadora' => 'estadoTrotadora' ,
                 'estado' => 'tipo_membresia_estado'
             ];
     
@@ -328,7 +329,8 @@ class Membresias extends BaseController {
                 'tipo_membresia_tipoperiodo',
                 'tipo_membresia_categoriamembresia',
                 'tipo_membresia_tipopago',
-                'tipo_membresia_estado' // Asegúrate de que este campo esté mapeado si es necesario
+                'tipo_membresia_estado', // Asegúrate de que este campo esté mapeado si es necesario
+                'estadoTrotadora'
             ];
     
             // Agregar campos condicionalmente requeridos
@@ -812,6 +814,9 @@ class Membresias extends BaseController {
         try {
             // Verificar si el cliente existe
             $cliente = $this->Servicio_m->verificar_cliente_por_dni($dni);
+            $cliente_estado_fechavencimiento = $request['habilitarFechaFin'] ? 1 : 0; // Asignar estado según habilitarFechaFin
+            $cliente_tipomembresia = $request['tipoMembresia']; // Asignar tipo de membresía
+    
             if ($cliente) {
                 // Buscar membresías válidas
                 $membresias = $this->Servicio_m->buscar_membresias_validas($cliente->cliente_id);
@@ -826,7 +831,9 @@ class Membresias extends BaseController {
                     'cliente_direccion' => $request['direccion'],
                     'cliente_telefono' => $request['telefono'],
                     'cliente_email' => $request['correo'],
-                    'fechaFinMembresia' => $request['fechaFinMembresia']
+                    'fechaFinMembresia' => $request['fechaFinMembresia'],
+                    'cliente_estado_fechavencimiento' => $cliente_estado_fechavencimiento,
+                    'cliente_tipomembresia' => $cliente_tipomembresia
                 ];
                 // Actualizar cliente y membresía en una transacción
                 $resultado = $this->Servicio_m->actualizar_cliente_y_membresia(
@@ -849,7 +856,9 @@ class Membresias extends BaseController {
                     'cliente_dni' => $dni,
                     'cliente_telefono' => $request['telefono'],
                     'cliente_email' => $request['correo'],
-                    'fechaFinMembresia' => $request['fechaFinMembresia']
+                    'fechaFinMembresia' => $request['fechaFinMembresia'],
+                    'cliente_estado_fechavencimiento' => $cliente_estado_fechavencimiento,
+                    'cliente_tipomembresia' => $cliente_tipomembresia
                 ];
     
                 $cliente_id = $this->Servicio_m->registrar_cliente($nuevo_cliente);

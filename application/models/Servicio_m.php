@@ -420,14 +420,15 @@ class Servicio_m extends CI_Model{
 
         // Consulta base con límite de 10
         $sql = "SELECT 
-                    cliente_id, 
-                    cliente_nombres, 
-                    cliente_direccion, 
-                    IF(cliente_dni IS NULL, 'No cuenta con D.N.I', cliente_dni) AS cliente_dni 
-                FROM clientes 
-                WHERE estado = 1 
-                  AND (cliente_nombres LIKE ? OR cliente_dni LIKE ? ) 
-                LIMIT 10";
+                clientes.cliente_id, 
+                clientes.cliente_nombres, 
+                tipo_membresia.tipo_membresia_descripcion AS cliente_direccion,
+                IF(clientes.cliente_dni IS NULL, 'No cuenta con D.N.I', clientes.cliente_dni) AS cliente_dni 
+            FROM clientes
+            LEFT JOIN tipo_membresia ON clientes.cliente_tipomembresia = tipo_membresia.tipo_membresia_id
+            WHERE clientes.estado = 1 
+              AND (clientes.cliente_nombres LIKE ? OR clientes.cliente_dni LIKE ? ) 
+            LIMIT 10";
 
         // Parámetros de búsqueda
         $params = ["%$search%", "%$search%"];
