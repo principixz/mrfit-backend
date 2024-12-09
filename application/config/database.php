@@ -95,6 +95,7 @@ $db['default'] = array(
 	'failover' => array(),
 	'save_queries' => TRUE
 );
+$db['default']['options'] = array(PDO::MYSQL_ATTR_INIT_COMMAND => "SET SESSION sql_mode=''"); 
 
 
 /*$db['default'] = array(
