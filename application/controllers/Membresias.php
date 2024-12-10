@@ -924,7 +924,12 @@ class Membresias extends BaseController {
             $fechaActual = date('Y-m-d');
     
             // Buscar cliente por DNI
-            $cliente = $this->db->get_where('clientes', ['cliente_dni' => $dni])->row();
+            $this->db->select('clientes.*, tipo_membresia.tipo_membresia_descripcion, tipo_membresia.estadoTrotadora');
+            $this->db->from('clientes');
+            $this->db->join('tipo_membresia', 'clientes.tipo_membresia = tipo_membresia.tipo_membresia_id', 'left');
+            $this->db->where('clientes.cliente_dni', $dni);
+            $cliente = $this->db->get()->row();
+
     
             if (!$cliente) {
                 echo json_encode([
@@ -959,6 +964,12 @@ class Membresias extends BaseController {
                 return;
             }
     
+            // Agregar mensaje basado en estadoTrotadora
+            if ($cliente->estadoTrotadora == 0) {
+                $mensajeTrotadora = "Estimado {$cliente->cliente_nombres}, su membresía solo le permite el uso del área de pesas.";
+            } else {
+                $mensajeTrotadora = "Estimado {$cliente->cliente_nombres}, usted tiene acceso a todos los beneficios de Mr. Fit.";
+            }
             // Calcular días restantes para la membresía
             $fechaVencimientoObj = new DateTime($fechaVencimiento);
             $fechaActualObj = new DateTime($fechaActual);
@@ -993,6 +1004,7 @@ class Membresias extends BaseController {
                 echo json_encode([
                     'mensaje' => 'Estimado Usuario usted ya ingresó hoy día a las ' . $asistencia->asistencia_fecha_hora,
                     'mensajeVencimiento' => $mensajeAmigable,
+                    'mensajeTrotadora' => $mensajeTrotadora,
                     'estado' => 'info',
                     'fechaVencimiento' => $fechaVencimiento,
                     'nombre' => $cliente->cliente_nombres,
@@ -1015,6 +1027,7 @@ class Membresias extends BaseController {
             echo json_encode([
                 'mensaje' => 'Se registró hoy ' . $asistenciaData['asistencia_fecha_hora'] ,
                 'mensajeVencimiento' => $mensajeAmigable,
+                'mensajeTrotadora' => $mensajeTrotadora,
                 'estado' => 'success',
                 'nombre' => $cliente->cliente_nombres,
                 'fechaVencimiento' => $fechaVencimiento,
