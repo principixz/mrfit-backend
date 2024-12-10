@@ -3245,13 +3245,30 @@ $cod_venta=$this->db->query("SELECT detalle_venta.id_venta FROM detalle_venta WH
           // Consulta los datos en la base de datos
           $data["tabla"] = $this->Mantenimiento_m->consulta3("
               SELECT 
-                  clientes.cliente_id AS 'id',
-                  clientes.*,
-                  tipo_membresia.tipo_membresia_id,
-                  tipo_membresia.tipo_membresia_descripcion AS 'tipo_membresia_nombre'
-              FROM clientes
-              LEFT JOIN tipo_membresia ON clientes.cliente_tipomembresia = tipo_membresia.tipo_membresia_id
-              WHERE clientes.estado = '1' AND clientes.cliente_nombres IS NOT NULL
+    clientes.cliente_id AS 'id',
+    clientes.*,
+    tipo_membresia.tipo_membresia_id,
+    tipo_membresia.tipo_membresia_descripcion AS 'tipo_membresia_nombre',
+    CASE 
+        WHEN clientes.cliente_estado_fechavencimiento = 1 THEN clientes.fechaFinMembresia
+        ELSE (
+            SELECT membresia.membresia_fecha_fin 
+            FROM membresia 
+            WHERE membresia.cliente_id = clientes.cliente_id 
+            ORDER BY membresia.membresia_fecha_fin DESC 
+            LIMIT 1
+        )
+    END AS fecha_vencimiento,
+    CASE 
+        WHEN clientes.cliente_estado_fechavencimiento = 1 THEN 'Opción Activada'
+        ELSE 'Opción Desactivada'
+    END AS estado_opcion
+FROM clientes
+LEFT JOIN tipo_membresia 
+    ON clientes.cliente_tipomembresia = tipo_membresia.tipo_membresia_id
+WHERE clientes.estado = '1' 
+  AND clientes.cliente_nombres IS NOT NULL  
+ORDER BY fecha_vencimiento DESC
           ");
   
           if ($data["tabla"] === false) {
