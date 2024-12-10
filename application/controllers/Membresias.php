@@ -926,7 +926,7 @@ class Membresias extends BaseController {
             // Buscar cliente por DNI
             $this->db->select('clientes.*, tipo_membresia.tipo_membresia_descripcion, tipo_membresia.estadoTrotadora');
             $this->db->from('clientes');
-            $this->db->join('tipo_membresia', 'clientes.tipo_membresia = tipo_membresia.tipo_membresia_id', 'left');
+            $this->db->join('tipo_membresia', 'clientes.cliente_tipomembresia = tipo_membresia.tipo_membresia_id', 'left');
             $this->db->where('clientes.cliente_dni', $dni);
             $cliente = $this->db->get()->row();
 
