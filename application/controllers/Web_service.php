@@ -3742,94 +3742,84 @@ public function eliminar_modulo()
 
   }
 
-   public function ws_traer_modulo()
-
+  public function ws_traer_modulo()
   {
-
-
-
-      $data_token = json_decode($this->consultar_token(),true);
-
-        $response=array();
-
-        $postdata = file_get_contents("php://input");
-
-        $request = json_decode($postdata,true); 
-
-        $perfil_id=$request["perfil_id"];
-
-
-
-    $data = $this->db->query("SELECT modulohijo.modulo_id,modulohijo.modulo_padre,modulohijo.modulo_nombre as nombre_padre
-
-      FROM
-
-      modulos 
-
-      INNER JOIN modulos AS modulohijo ON modulos.modulo_padre = modulohijo.modulo_id
-
-      WHERE modulohijo.modulo_id != 1 
-
-        and modulos.estado=1 
-
-      GROUP BY modulohijo.modulo_padre,modulohijo.modulo_nombre ")->result_array();
-
-    foreach ($data as $key => $value) {
-
-      $mod = $this->db->query("SELECT modulos.modulo_id as id,modulos.modulo_nombre,if((
-
-SELECT permisos_sede.persed_id_modulo 
-
-from permisos_sede
-
-where permisos_sede.persed_id_modulo=id
-
-and permisos_sede.persed_id_perfil=".$perfil_id."
-
-)IS NULL,false,true) as estado
-
-        FROM
-
-        modulos
-
-        INNER JOIN modulos AS modulohijo ON modulos.modulo_padre = modulohijo.modulo_id 
-
-        WHERE
-
-         
-
-        modulohijo.modulo_id =".$value["modulo_id"]." and modulos.estado=1")->result_array();
-
-   
-
-
-
-      foreach ($mod as $key1 => $value1) {
-
-           $data[$key]["lista"][$key1]["estado"] =(int) $value1["estado"];
-
-           $data[$key]["lista"][$key1]["id"] = $value1["id"];
-
-           $data[$key]["lista"][$key1]["modulo_nombre"] = $value1["modulo_nombre"];
-
-
-
+      try {
+          // Verificar token
+          $data_token = json_decode($this->consultar_token(), true);
+  
+          // Inicializar respuesta y procesar datos entrantes
+          $response = [];
+          $postdata = file_get_contents("php://input");
+          $request = json_decode($postdata, true); 
+  
+          if (!isset($request["perfil_id"])) {
+              throw new Exception("El perfil_id es requerido.");
+          }
+          $perfil_id = intval($request["perfil_id"]);
+  
+          // Consulta principal para obtener los módulos padres
+          $data = $this->db->query("
+              SELECT 
+                  modulohijo.modulo_id,
+                  modulohijo.modulo_padre,
+                  modulohijo.modulo_nombre as nombre_padre
+              FROM
+                  modulos
+              INNER JOIN modulos AS modulohijo ON modulos.modulo_padre = modulohijo.modulo_id
+              WHERE 
+                  modulohijo.modulo_id != 1 
+                  AND modulos.estado = 1
+              GROUP BY 
+                  modulohijo.modulo_id,
+                  modulohijo.modulo_padre,
+                  modulohijo.modulo_nombre
+          ")->result_array();
+  
+          foreach ($data as $key => $value) {
+              // Consulta para obtener los submódulos y su estado
+              $mod = $this->db->query("
+                  SELECT 
+                      modulos.modulo_id as id,
+                      modulos.modulo_nombre,
+                      IF((
+                          SELECT 
+                              permisos_sede.persed_id_modulo 
+                          FROM 
+                              permisos_sede
+                          WHERE 
+                              permisos_sede.persed_id_modulo = modulos.modulo_id
+                              AND permisos_sede.persed_id_perfil = ?
+                      ) IS NULL, false, true) as estado
+                  FROM
+                      modulos
+                  INNER JOIN modulos AS modulohijo ON modulos.modulo_padre = modulohijo.modulo_id
+                  WHERE 
+                      modulohijo.modulo_id = ? 
+                      AND modulos.estado = 1
+              ", [$perfil_id, intval($value["modulo_id"])])->result_array();
+  
+              // Agregar submódulos al módulo padre
+              foreach ($mod as $key1 => $value1) {
+                  $data[$key]["lista"][$key1] = [
+                      "estado" => (int) $value1["estado"],
+                      "id" => $value1["id"],
+                      "modulo_nombre" => $value1["modulo_nombre"]
+                  ];
+              }
+          }
+  
+          // Retornar la respuesta en formato JSON
+          echo json_encode($data);
+  
+      } catch (Exception $e) {
+          // Manejar errores y retornar un mensaje de error en JSON
+          http_response_code(400);
+          echo json_encode([
+              "error" => true,
+              "message" => $e->getMessage()
+          ]);
       }
-
-    }
-
- 
-
-    //$data[$key+1]["permisos"] = $this->db->get_where('permisos_sede', array('persed_id_perfil' =>$perfil_id))->result_array();
-
-
-
- 
-
-    echo json_encode($data);
-
-
-
   }
 
 
