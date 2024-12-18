@@ -911,6 +911,8 @@ class Membresias extends BaseController {
     }
 
     public function registrar_asistencia() {
+        $this->db->trans_begin(); // Iniciar transacción
+    
         try {
             // Obtener datos del POST
             $postdata = file_get_contents("php://input");
@@ -929,13 +931,15 @@ class Membresias extends BaseController {
             $this->db->join('tipo_membresia', 'clientes.cliente_tipomembresia = tipo_membresia.tipo_membresia_id', 'left');
             $this->db->where('clientes.cliente_dni', $dni);
             $cliente = $this->db->get()->row();
-
     
             if (!$cliente) {
+                $mensaje = "❌ Lo sentimos, el DNI proporcionado no está registrado en nuestra base de datos. Por favor, contacte con el personal de recepción para más información.";
+                $mensaje = str_replace('. ', '.<br>', $mensaje);
                 echo json_encode([
-                    'mensaje' => 'Lo sentimos, el DNI proporcionado no está registrado en nuestra base de datos. Por favor, contacte con el personal de recepción para más información.',
+                    'mensaje' => $mensaje,
                     'estado' => 'error'
                 ]);
+                $this->db->trans_rollback(); 
                 return;
             }
     
@@ -951,47 +955,59 @@ class Membresias extends BaseController {
     
             $fechaVencimiento = null;
             if (!empty($membresias)) {
-                // Tomar la última fecha de vencimiento
                 $fechaVencimiento = $membresias[0]->membresia_fecha_fin;
             } else if (isset($cliente->fechaFinMembresia) && $cliente->fechaFinMembresia >= $fechaActual) {
                 $fechaVencimiento = $cliente->fechaFinMembresia;
             } else {
+                // Membresía vencida
+                $mensaje = "Estimado <strong>{$cliente->cliente_nombres}</strong>, su membresía ha vencido. Por favor, renueve su membresía para continuar disfrutando de nuestros servicios. ❌";
+                $mensaje = str_replace('. ', '.<br>', $mensaje);
                 echo json_encode([
-                    'mensaje' => 'Estimado usuario, su membresía ha vencido. Por favor, renueve su membresía para continuar disfrutando de nuestros servicios.',
+                    'mensaje' => $mensaje,
                     'estado' => 'error',
                     'nombre' => $cliente->cliente_nombres
                 ]);
+                $this->db->trans_rollback();
                 return;
             }
     
-            // Agregar mensaje basado en estadoTrotadora
+            // Mensaje según estadoTrotadora
             if ($cliente->estadoTrotadora == 0) {
-                $mensajeTrotadora = "Estimado {$cliente->cliente_nombres}, su membresía solo le permite el uso del área de pesas.";
+                $mensajeTrotadora = "Estimado <strong>{$cliente->cliente_nombres}</strong>, su membresía solo le permite el uso del área de pesas. 🏋️";
             } else {
-                $mensajeTrotadora = "Estimado {$cliente->cliente_nombres}, usted tiene acceso a todos los beneficios de Mr. Fit.";
+                $mensajeTrotadora = "Estimado <strong>{$cliente->cliente_nombres}</strong>, usted tiene acceso a todos los beneficios de Mr Fit 💪";
             }
-            // Calcular días restantes para la membresía
+            $mensajeTrotadora = str_replace('. ', '.<br>', $mensajeTrotadora);
+    
+            // Calcular días restantes
             $fechaVencimientoObj = new DateTime($fechaVencimiento);
             $fechaActualObj = new DateTime($fechaActual);
             $diasRestantes = $fechaActualObj->diff($fechaVencimientoObj)->days;
     
-            $estadoVencimiento = 0; // Por defecto, más de 20 días
-            if ($diasRestantes < 10) {
+            $estadoVencimiento = 0;
+            $estadoVencimientoD = 'success';
+            if ($diasRestantes >= 0 && $diasRestantes < 8) {
                 $estadoVencimiento = 2;
-            } else if ($diasRestantes < 20) {
+                $estadoVencimientoD = 'error'; // Pocos días restantes
+            } else if ($diasRestantes >= 7 && $diasRestantes < 20) {
                 $estadoVencimiento = 1;
+                
+                $estadoVencimientoD = 'info'; 
             }
     
-            // Generar mensaje amigable basado en los días restantes
+            // Mensaje amigable con emojis
             $mensajeAmigable = "Estimado usuario, ";
-            if ($diasRestantes < 15) {
-                $mensajeAmigable .= "su membresía está próxima a vencer. Le quedan {$diasRestantes} días. ";
+            if ($fechaVencimiento === $fechaActual) {
+                $mensajeAmigable .= "su membresía vence <strong>hoy</strong> 🛑 <br>";
+            } else if ($diasRestantes < 15) {
+                $mensajeAmigable .= "su membresía está próxima a vencer. Le quedan <strong>{$diasRestantes}</strong> días 🛑.<br>";
             } else {
-                $mensajeAmigable .= "su membresía sigue vigente. ";
+                $mensajeAmigable .= "su membresía sigue vigente. ✅<br>";
             }
-            $mensajeAmigable .= "Su fecha de vencimiento es el {$fechaVencimiento}.";
+            $mensajeAmigable .= "Su fecha de vencimiento es el <strong>{$fechaVencimiento}</strong>.";
+            $mensajeAmigable = str_replace('. ', '.<br>', $mensajeAmigable);
     
-            // Validar si el usuario ya ingresó hoy
+            // Validar asistencia del día
             $asistencia = $this->db
                 ->select('*')
                 ->from('asistencia')
@@ -1001,20 +1017,23 @@ class Membresias extends BaseController {
                 ->row();
     
             if ($asistencia) {
+                $mensaje = "Estimado Usuario, usted ya ingresó hoy día a las <strong>{$asistencia->asistencia_fecha_hora}</strong> ℹ️";
+                $mensaje = str_replace('. ', '.<br>', $mensaje);
                 echo json_encode([
-                    'mensaje' => 'Estimado Usuario usted ya ingresó hoy día a las ' . $asistencia->asistencia_fecha_hora,
+                    'mensaje' => $mensaje,
                     'mensajeVencimiento' => $mensajeAmigable,
                     'mensajeTrotadora' => $mensajeTrotadora,
-                    'estado' => 'info',
+                    'estado' => $estadoVencimientoD,
                     'fechaVencimiento' => $fechaVencimiento,
                     'nombre' => $cliente->cliente_nombres,
                     'diasRestantes' => $diasRestantes,
                     'estadoVencimiento' => $estadoVencimiento
                 ]);
+                $this->db->trans_rollback(); 
                 return;
             }
     
-            // Registrar la asistencia
+            // Registrar asistencia
             $asistenciaData = [
                 'cliente_id' => $cliente->cliente_id,
                 'asistencia_fecha_hora' => date('Y-m-d H:i:s'),
@@ -1024,11 +1043,30 @@ class Membresias extends BaseController {
     
             $this->db->insert('asistencia', $asistenciaData);
     
+            // Verificar transacción
+            if ($this->db->trans_status() === FALSE) {
+                $this->db->trans_rollback();
+                $mensaje = "Ocurrió un error al registrar la asistencia. ❌";
+                $mensaje = str_replace('. ', '.<br>', $mensaje);
+                echo json_encode([
+                    'mensaje' => $mensaje,
+                    'estado' => 'error'
+                ]);
+                return;
+            } else {
+                //$this->db->trans_rollback();
+                $this->db->trans_commit();
+            }
+    
+            // Respuesta final exitosa
+            $mensaje = "✅ Se registró hoy a las <strong>{$asistenciaData['asistencia_fecha_hora']}</strong> ¡Disfrute su día! 🤗";
+            $mensaje = str_replace('. ', '.<br>', $mensaje);
+    
             echo json_encode([
-                'mensaje' => 'Se registró hoy ' . $asistenciaData['asistencia_fecha_hora'] ,
+                'mensaje' => $mensaje,
                 'mensajeVencimiento' => $mensajeAmigable,
                 'mensajeTrotadora' => $mensajeTrotadora,
-                'estado' => 'success',
+                'estado' => $estadoVencimientoD,
                 'nombre' => $cliente->cliente_nombres,
                 'fechaVencimiento' => $fechaVencimiento,
                 'diasRestantes' => $diasRestantes,
@@ -1036,13 +1074,158 @@ class Membresias extends BaseController {
             ]);
     
         } catch (Exception $e) {
+            $this->db->trans_rollback(); // rollback en caso de excepción
+            $mensaje = "Error interno: {$e->getMessage()} ❌";
+            $mensaje = str_replace('. ', '.<br>', $mensaje);
             echo json_encode([
-                'mensaje' => 'Error interno: ' . $e->getMessage(),
+                'mensaje' => $mensaje,
                 'estado' => 'error'
             ]);
         }
     }
 
+
+    public function buscar_tabla_clientes(){
+        $data_token = json_decode($this->consultar_token(),true);
+        $postdata = file_get_contents("php://input");
+        $request = json_decode($postdata,true); 
+        $columns = array( 
+            0 =>'id', 
+            1 =>'dni',
+            2=> 'nombre',
+            3=> 'membresia',
+            4=> 'fecha_vencimiento',
+            5=> 'estado_opcion',
+            6=>'button',
+        );
+        $limit =  $request['length'];
+        $start = $request['start'];
+        $order = $columns[ $request['order'][0]['column']];
+        $dir = $request['order'][0]['dir'];
+        $d= $request['order'][0]["column"];
+
+        $sql1 = "SELECT clientes.cliente_id AS 'id',clientes.*,tipo_membresia.tipo_membresia_id,
+        tipo_membresia.tipo_membresia_descripcion AS 'tipo_membresia_nombre',
+            CASE 
+                WHEN clientes.cliente_estado_fechavencimiento = 1 THEN clientes.fechaFinMembresia
+                ELSE (
+                    SELECT membresia.membresia_fecha_fin 
+                    FROM membresia 
+                    WHERE membresia.cliente_id = clientes.cliente_id 
+                    ORDER BY membresia.membresia_fecha_fin DESC 
+                    LIMIT 1
+                )
+            END AS fecha_vencimiento,
+            CASE 
+                WHEN clientes.cliente_estado_fechavencimiento = 1 THEN 'Opción Activada'
+                ELSE 'Opción Desactivada'
+            END AS estado_opcion
+        FROM clientes
+        LEFT JOIN tipo_membresia 
+            ON clientes.cliente_tipomembresia = tipo_membresia.tipo_membresia_id
+        WHERE clientes.estado = '1' 
+        AND clientes.cliente_nombres IS NOT NULL  
+        ORDER BY fecha_vencimiento DESC";
+        $lista=$this->db->query($sql1)->result_array();
+        $formar_order="clientes.cliente_id";
+        $totalFiltered = count($lista); 
+        $totalData = count($lista); 
+        $data;
+        if(empty($request['search']['value'])){
+
+        }else{
+            $search = $request['search']['value']; 
+            $sql = "
+            SELECT 
+                clientes.cliente_id AS 'id',
+                clientes.*,
+                tipo_membresia.tipo_membresia_id,
+                tipo_membresia.tipo_membresia_descripcion AS 'tipo_membresia_nombre',
+                CASE 
+                    WHEN clientes.cliente_estado_fechavencimiento = 1 THEN clientes.fechaFinMembresia
+                    ELSE (
+                        SELECT membresia.membresia_fecha_fin 
+                        FROM membresia 
+                        WHERE membresia.cliente_id = clientes.cliente_id 
+                        ORDER BY membresia.membresia_fecha_fin DESC 
+                        LIMIT 1
+                    )
+                END AS fecha_vencimiento,
+                CASE 
+                    WHEN clientes.cliente_estado_fechavencimiento = 1 THEN 'Opción Activada'
+                    ELSE 'Opción Desactivada'
+                END AS estado_opcion
+            FROM clientes
+            LEFT JOIN tipo_membresia 
+                ON clientes.cliente_tipomembresia = tipo_membresia.tipo_membresia_id 
+            WHERE 
+                clientes.estado = '1'
+                AND (
+                    clientes.cliente_dni LIKE '%" . $search . "%' OR 
+                    clientes.cliente_nombres LIKE '%" . $search . "%' OR 
+                    tipo_membresia.tipo_membresia_descripcion LIKE '%" . $search . "%' OR  
+                    (
+                        CASE 
+                            WHEN clientes.cliente_estado_fechavencimiento = 1 THEN clientes.fechaFinMembresia
+                            ELSE (
+                                SELECT membresia.membresia_fecha_fin 
+                                FROM membresia 
+                                WHERE membresia.cliente_id = clientes.cliente_id 
+                                ORDER BY membresia.membresia_fecha_fin DESC 
+                                LIMIT 1
+                            )
+                        END
+                    ) LIKE '%" . $search . "%' OR  
+                    (
+                        CASE 
+                            WHEN clientes.cliente_estado_fechavencimiento = 1 THEN 'Opción Activada'
+                            ELSE 'Opción Desactivada'
+                        END
+                    ) LIKE '%" . $search . "%'
+                )
+                AND clientes.cliente_nombres IS NOT NULL ";
+            $sql1 = $sql;
+            $dat=$this->db->query($sql1);
+            $sql.= "ORDER BY ".$formar_order." desc limit ".$start.",".$limit; 
+            
+            $lista_datos=$this->db->query($sql);
+            if($lista_datos->num_rows()>0){
+                $data= $lista_datos->result(); 
+                $totalFiltered = $dat->num_rows();
+            }else{
+                $data= null;
+                $totalFiltered = 0;
+            }
+        }
+
+        $tabla = "'ventas'";
+        $data1 = array();
+        if(!empty($data)){
+            foreach ($data as $post){
+                $html1="";
+                $nestedData['id'] = $post->id;
+                $nestedData['dni'] = $post->cliente_dni;
+                $nestedData['nombre'] = $post->cliente_nombres;
+                $nestedData['membresia'] = $post->tipo_membresia_nombre;
+                $nestedData['fecha_vencimiento'] =$post->fecha_vencimiento;
+                $nestedData['estado_opcion'] =$post->estado_opcion;
+                $nestedData['pdf'] ='';
+                $nestedData['xml'] ='';
+                $nestedData['cdr'] ='';
+                $nestedData['estado'] =1;
+                $html="";
+                $data1[] = $nestedData;
+            }
+        }
+        $json_data = array(
+            "draw"            => intval($request['draw']),  
+            "recordsTotal"    => intval($totalData),  
+            "recordsFiltered" => intval($totalFiltered), 
+            "data"            => $data1   
+        );
+
+        echo json_encode($json_data); 
+    }
 
 
 }

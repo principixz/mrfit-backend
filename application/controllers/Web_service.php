@@ -3908,8 +3908,7 @@ public function eliminar_modulo()
 
   /*****************************************************************************************************************************************************/
 
-  public function buscar_tabla()
-  {
+  public function buscar_tabla(){
 
 $data_token = json_decode($this->consultar_token(),true);
  // $response=array();
