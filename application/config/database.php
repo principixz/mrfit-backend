@@ -74,7 +74,7 @@ $active_group = 'default';
 $query_builder = TRUE;
 
 
-$db['default'] = array(
+/*$db['default'] = array(
 	'dsn'	=> '',
 	'hostname' => '18.222.113.199',
 	'username' => 'MrFit', 
@@ -94,11 +94,11 @@ $db['default'] = array(
 	'stricton' => FALSE,
 	'failover' => array(),
 	'save_queries' => TRUE
-);
+);*/
 $db['default']['options'] = array(PDO::MYSQL_ATTR_INIT_COMMAND => "SET SESSION sql_mode=''"); 
 
 
-/*$db['default'] = array(
+$db['default'] = array(
 	'dsn'	=> '',
 	'hostname' => 'localhost:3306',
 	'username' => 'root', 
@@ -118,4 +118,4 @@ $db['default']['options'] = array(PDO::MYSQL_ATTR_INIT_COMMAND => "SET SESSION s
 	'stricton' => FALSE,
 	'failover' => array(),
 	'save_queries' => TRUE
-);;*/
+);

@@ -442,4 +442,33 @@ class Servicio_m extends CI_Model{
             throw $e; // Relanzar la excepción para manejo en el controlador
         }
     }
+
+    public function traer_asistencias($cliente_id) {
+        try {
+            $this->db->select("
+            DATE_FORMAT(asistencia.asistencia_fecha_hora, '%Y') AS year,
+            DATE_FORMAT(asistencia.asistencia_fecha_hora, '%m') AS month,
+            DATE_FORMAT(asistencia.asistencia_fecha_hora, '%Y-%m-%d') AS fechaIngreso,
+            DATE_FORMAT(asistencia.asistencia_fecha_hora, '%h:%i %p') AS horaIngreso,
+            tipo_membresia.tipo_membresia_descripcion AS tipoMembresia
+        ", false);
+    
+            $this->db->from('asistencia');
+            $this->db->join('clientes', 'asistencia.cliente_id = clientes.cliente_id', 'inner');
+            $this->db->join('tipo_membresia', 'clientes.cliente_tipomembresia = tipo_membresia.tipo_membresia_id', 'inner');
+            $this->db->where('asistencia.cliente_id', $cliente_id);
+            $this->db->order_by('asistencia.asistencia_fecha', 'DESC');
+    
+            $query = $this->db->get();
+    
+            if ($query === false) {
+                throw new Exception('Error al obtener asistencias del cliente.');
+            }
+    
+            return $query->result_array();
+        } catch (Exception $e) {
+            log_message('error', 'Error en traer_asistencias: ' . $e->getMessage());
+            return false;
+        }
+    }
 }

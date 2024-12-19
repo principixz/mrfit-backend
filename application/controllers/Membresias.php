@@ -1272,6 +1272,65 @@ class Membresias extends BaseController {
         echo json_encode($json_data); 
     }
 
+    public function traerAsistencias() {
+        try {
+            $data_token = json_decode($this->consultar_token(), true);
+            if (!$data_token) {
+                throw new CustomException('Error al obtener el token.', 401);
+            }
+    
+            $postdata = file_get_contents("php://input");
+            $request = json_decode($postdata, true);
+            $cliente_id = $request["id"] ?? null;
+    
+            if (!$cliente_id) {
+                throw new CustomException('El cliente_id es requerido.', 400);
+            }
+    
+            $asistencias = $this->Servicio_m->traer_asistencias($cliente_id);
+            if ($asistencias === false) {
+                throw new CustomException('Error al obtener las asistencias.', 500);
+            }
+            $clientenombre = $this->Servicio_m->obtener_cliente_por_id($cliente_id);
+            if ($clientenombre === false) {
+                throw new CustomException('Error al obtener las asistencias.', 500);
+            }
+            // Formatear los meses y años
+            $months = [ ];
+    
+            $years = array_unique(array_column($asistencias, 'year'));
+            sort($years);
+    
+            // Formatear los datos para la tabla
+            $data = array_map(function ($row) {
+                return [
+                    'fechaIngreso' => $row['fechaIngreso'],
+                    'horaIngreso' => $row['horaIngreso'],
+                    'tipoMembresia' => $row['tipoMembresia']
+                ];
+            }, $asistencias);
+    
+            // Respuesta
+            echo json_encode([
+                "months" => $months,
+                "years" => $years,
+                "data" => $data,
+                "cliente" => $clientenombre
+            ]);
+        } catch (CustomException $e) {
+            log_message('error', 'Error en traerAsistencia: ' . $e->getMessage());
+            $this->output
+                ->set_status_header($e->getHttpCode())
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['error' => $e->getMessage()]));
+        } catch (Exception $e) {
+            log_message('error', 'Error general en traerAsistencia: ' . $e->getMessage());
+            $this->output
+                ->set_status_header(500)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['error' => 'Ocurrió un problema interno del servidor.']));
+        }
+    }
 
 }
 ?>
