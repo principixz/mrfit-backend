@@ -984,14 +984,13 @@ class Membresias extends BaseController {
             $fechaActualObj = new DateTime($fechaActual);
             $diasRestantes = $fechaActualObj->diff($fechaVencimientoObj)->days;
     
-            $estadoVencimiento = 0;
+            #$estadoVencimiento = 0;
             $estadoVencimientoD = 'success';
-            if ($diasRestantes >= 0 && $diasRestantes < 8) {
-                $estadoVencimiento = 2;
+            if ($diasRestantes >= 0 && $diasRestantes < 7) {
+                #$estadoVencimiento = 2;
                 $estadoVencimientoD = 'error'; // Pocos días restantes
-            } else if ($diasRestantes >= 7 && $diasRestantes < 20) {
-                $estadoVencimiento = 1;
-                
+            } else if ($diasRestantes >= 7 && $diasRestantes < 10) {
+                #$estadoVencimiento = 1;
                 $estadoVencimientoD = 'info'; 
             }
     
@@ -999,10 +998,12 @@ class Membresias extends BaseController {
             $mensajeAmigable = "Estimado usuario, ";
             if ($fechaVencimiento === $fechaActual) {
                 $mensajeAmigable .= "su membresía vence <strong>hoy</strong> 🛑 <br>";
-            } else if ($diasRestantes < 15) {
+            } else if ($diasRestantes >= 7 && $diasRestantes < 10) {
                 $mensajeAmigable .= "su membresía está próxima a vencer. Le quedan <strong>{$diasRestantes}</strong> días 🛑.<br>";
+            } else if ($diasRestantes > 1 && $diasRestantes < 10) {
+                $mensajeAmigable .= "Le recordamos que su membresía está proximo a expirar. Le quedan <strong>{$diasRestantes}</strong> días 🛑.<br>";
             } else {
-                $mensajeAmigable .= "su membresía sigue vigente. ✅<br>";
+                $mensajeAmigable .= "su membresía sigue vigente ✅<br>";
             }
             $mensajeAmigable .= "Su fecha de vencimiento es el <strong>{$fechaVencimiento}</strong>.";
             $mensajeAmigable = str_replace('. ', '.<br>', $mensajeAmigable);
@@ -1023,11 +1024,11 @@ class Membresias extends BaseController {
                     'mensaje' => $mensaje,
                     'mensajeVencimiento' => $mensajeAmigable,
                     'mensajeTrotadora' => $mensajeTrotadora,
-                    'estado' => $estadoVencimientoD,
+                    'estado' => 'info',
                     'fechaVencimiento' => $fechaVencimiento,
                     'nombre' => $cliente->cliente_nombres,
                     'diasRestantes' => $diasRestantes,
-                    'estadoVencimiento' => $estadoVencimiento
+                    'estadoVencimiento' => $estadoVencimientoD
                 ]);
                 $this->db->trans_rollback(); 
                 return;
@@ -1054,8 +1055,8 @@ class Membresias extends BaseController {
                 ]);
                 return;
             } else {
-                //$this->db->trans_rollback();
-                $this->db->trans_commit();
+                $this->db->trans_rollback();
+                //$this->db->trans_commit();
             }
     
             // Respuesta final exitosa
@@ -1066,11 +1067,11 @@ class Membresias extends BaseController {
                 'mensaje' => $mensaje,
                 'mensajeVencimiento' => $mensajeAmigable,
                 'mensajeTrotadora' => $mensajeTrotadora,
-                'estado' => $estadoVencimientoD,
+                'estado' => 'success',
                 'nombre' => $cliente->cliente_nombres,
                 'fechaVencimiento' => $fechaVencimiento,
                 'diasRestantes' => $diasRestantes,
-                'estadoVencimiento' => $estadoVencimiento
+                'estadoVencimiento' => $estadoVencimientoD
             ]);
     
         } catch (Exception $e) {
@@ -1128,11 +1129,55 @@ class Membresias extends BaseController {
         ORDER BY fecha_vencimiento DESC";
         $lista=$this->db->query($sql1)->result_array();
         $formar_order="clientes.cliente_id";
+        $order_options = [
+            "clientes.cliente_id",
+            "clientes.cliente_dni",
+            "clientes.cliente_nombres",
+            "tipo_membresia.tipo_membresia_descripcion",
+            "fecha_vencimiento",
+            "estado_opcion"
+        ];
+        
+        $formar_order = isset($order_options[$d]) ? $order_options[$d] : "clientes.cliente_id";
+
         $totalFiltered = count($lista); 
         $totalData = count($lista); 
         $data;
         if(empty($request['search']['value'])){
-
+            $sql = "
+            SELECT 
+                clientes.cliente_id AS 'id',
+                clientes.*,
+                tipo_membresia.tipo_membresia_id,
+                tipo_membresia.tipo_membresia_descripcion AS 'tipo_membresia_nombre',
+                CASE 
+                    WHEN clientes.cliente_estado_fechavencimiento = 1 THEN clientes.fechaFinMembresia
+                    ELSE (
+                        SELECT membresia.membresia_fecha_fin 
+                        FROM membresia 
+                        WHERE membresia.cliente_id = clientes.cliente_id 
+                        ORDER BY membresia.membresia_fecha_fin DESC 
+                        LIMIT 1
+                    )
+                END AS fecha_vencimiento,
+                CASE 
+                    WHEN clientes.cliente_estado_fechavencimiento = 1 THEN 'Opción Activada'
+                    ELSE 'Opción Desactivada'
+                END AS estado_opcion
+            FROM clientes
+            LEFT JOIN tipo_membresia 
+                ON clientes.cliente_tipomembresia = tipo_membresia.tipo_membresia_id 
+            WHERE 
+                clientes.estado = '1' AND clientes.cliente_dni != '00000001'
+                AND clientes.cliente_nombres IS NOT NULL ";
+            $sql.= "ORDER BY ".$formar_order." ".$dir." limit ".$start.",".$limit; 
+            $lista_datos=$this->db->query($sql);
+            if($lista_datos->num_rows()>0){
+                $data= $lista_datos->result(); 
+            }
+            else{
+                $data= null;
+            }
         }else{
             $search = $request['search']['value']; 
             $sql = "
@@ -1182,7 +1227,7 @@ class Membresias extends BaseController {
                             ELSE 'Opción Desactivada'
                         END
                     ) LIKE '%" . $search . "%'
-                )
+                ) AND clientes.cliente_dni != '00000001'
                 AND clientes.cliente_nombres IS NOT NULL ";
             $sql1 = $sql;
             $dat=$this->db->query($sql1);

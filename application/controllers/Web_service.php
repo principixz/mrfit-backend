@@ -3347,21 +3347,45 @@ ORDER BY fecha_vencimiento DESC
     echo json_encode($dat);
   }
 
-  public function eliminar_cliente()
-  {
-    $data_token = json_decode($this->consultar_token(),true);
+  public function eliminar_cliente() {
+    $data_token = json_decode($this->consultar_token(), true);
+    $id_empleado = $data_token["empleado_id"]; 
+    $response = array();
+    $postdata = file_get_contents("php://input");
+    $request = json_decode($postdata, true); 
+    $id_cliente = $request['id'];
+    $motivo = $request["mensaje"];
+    $tipo_transaccion = 'DELETE'; 
+    $this->db->trans_begin();  
 
-   $response=array();
-  $postdata = file_get_contents("php://input");
-  $request = json_decode($postdata,true); 
-    $data=array();
-    $id=$request['id'];
-      $this->Mantenimiento_m->consulta1("update clientes set estado='0' where cliente_id=".$id);
-      $response["estado"]=true;
-      $response["mensaje"]="se elimino correctamente";
-      echo json_encode($response);exit();
+    try { 
+        $update_query = "
+            UPDATE clientes 
+            SET estado = '0', cliente_motivoeliminacion = ?
+            WHERE cliente_id = ?";
+        $this->db->query($update_query, array($motivo, $id_cliente)); 
+        $log_query = "
+            INSERT INTO transacciones_cliente_log (cliente_id, empleado_id, tipo_transaccion, motivo)
+            VALUES (?, ?, ?, ?)";
+        $this->db->query($log_query, array($id_cliente, $id_empleado, $tipo_transaccion, $motivo));
 
-  } 
+        if ($this->db->trans_status() === FALSE) {
+            throw new Exception("Error al realizar la transacción");
+        }
+        $this->db->trans_commit();
+
+        $response["estado"] = true;
+        $response["mensaje"] = "Cliente eliminado correctamente y transacción registrada";
+    } catch (Exception $e) {
+        // Revertir transacción
+        $this->db->trans_rollback();
+
+        $response["estado"] = false;
+        $response["mensaje"] = "Error: " . $e->getMessage();
+    }
+    echo json_encode($response);
+    exit();
+}
 
   public function cargar_platos_productos()
   {

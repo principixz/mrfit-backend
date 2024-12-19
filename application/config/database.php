@@ -118,4 +118,4 @@ $db['default']['options'] = array(PDO::MYSQL_ATTR_INIT_COMMAND => "SET SESSION s
 	'stricton' => FALSE,
 	'failover' => array(),
 	'save_queries' => TRUE
-);*/
+);;*/
