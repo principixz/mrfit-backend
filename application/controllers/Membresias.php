@@ -803,28 +803,41 @@ class Membresias extends BaseController {
             exit();
         }
     }
+    private function generarUUID() {
+        return sprintf(
+            '%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
+            mt_rand(0, 0xffff), mt_rand(0, 0xffff),
+            mt_rand(0, 0xffff),
+            mt_rand(0, 0x0fff) | 0x4000,
+            mt_rand(0, 0x3fff) | 0x8000,
+            mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff)
+        );
+    }
 
-    public function gestionar_cliente(){
+    public function gestionar_cliente() {
         $postdata = file_get_contents("php://input");
         $request = json_decode($postdata, true); // Decodifica el JSON de la solicitud
         $dni = $request['dni'];
         $nueva_fecha_fin = isset($request['fechaFinMembresia']) ? $request['fechaFinMembresia'] : null;
+        $motivo = $request['motivoCambio'] ?? null;
+        $empleado_id = $request['idEmpleado'] ?? null;
     
         $response = [];
         try {
             // Verificar si el cliente existe
+            $transaccion_id = $this->generarUUID();
             $cliente = $this->Servicio_m->verificar_cliente_por_dni($dni);
-            $cliente_estado_fechavencimiento = $request['habilitarFechaFin'] ? 1 : 0; // Asignar estado según habilitarFechaFin
-            $cliente_tipomembresia = $request['tipoMembresia']; // Asignar tipo de membresía
+            $cliente_estado_fechavencimiento = $request['habilitarFechaFin'] ? 1 : 0;
+            $cliente_tipomembresia = $request['tipoMembresia'];
     
             if ($cliente) {
                 // Buscar membresías válidas
                 $membresias = $this->Servicio_m->buscar_membresias_validas($cliente->cliente_id);
                 $ultima_membresia = null;
                 if ($membresias) {
-                    // Obtener el último registro de membresía
                     $ultima_membresia = end($membresias);
                 }
+    
                 // Preparar datos para actualizar cliente
                 $actualizacion_cliente = [
                     'cliente_nombres' => $request['nombres'],
@@ -835,6 +848,29 @@ class Membresias extends BaseController {
                     'cliente_estado_fechavencimiento' => $cliente_estado_fechavencimiento,
                     'cliente_tipomembresia' => $cliente_tipomembresia
                 ];
+    
+                // Detectar cambios
+                foreach ($actualizacion_cliente as $campo => $valor_nuevo) {
+                    $valor_anterior = $cliente->$campo ?? null;
+                    if ($this->esFecha($valor_anterior) && $this->esFecha($valor_nuevo)) {
+                        $valor_anterior = date('Y-m-d', strtotime($valor_anterior));
+                        $valor_nuevo = date('Y-m-d', strtotime($valor_nuevo));
+                    }
+                    if ($valor_anterior != $valor_nuevo) {
+                        // Registrar el cambio en el log
+                        $this->Servicio_m->log_cambio_cliente(
+                            $transaccion_id,
+                            $cliente->cliente_id,
+                            'UPDATE',
+                            $campo,
+                            $valor_anterior,
+                            $valor_nuevo,
+                            $motivo,
+                            $empleado_id
+                        );
+                    }
+                }
+    
                 // Actualizar cliente y membresía en una transacción
                 $resultado = $this->Servicio_m->actualizar_cliente_y_membresia(
                     $cliente->cliente_id,
@@ -842,6 +878,7 @@ class Membresias extends BaseController {
                     $ultima_membresia ? $ultima_membresia->membresia_id : null,
                     $nueva_fecha_fin
                 );
+    
                 if (!$resultado) {
                     throw new Exception('Error en la actualización de cliente o membresía.');
                 }
@@ -867,6 +904,18 @@ class Membresias extends BaseController {
                     throw new Exception('Error al registrar el cliente.');
                 }
     
+                // Registrar la inserción en el log
+                $this->Servicio_m->log_cambio_cliente(
+                    $transaccion_id,
+                    $cliente_id,
+                    'INSERT',
+                    null,
+                    null,
+                    json_encode($nuevo_cliente),
+                    $motivo,
+                    $empleado_id
+                );
+    
                 $response['estado'] = true;
                 $response['mensaje'] = 'Cliente registrado exitosamente.';
                 $response['cliente_id'] = $cliente_id;
@@ -881,6 +930,12 @@ class Membresias extends BaseController {
         }
     }
 
+    private function esFecha($valor) {
+        if (!is_string($valor)) {
+            return false;
+        }
+        return strtotime($valor) !== false;
+    }
     public function buscar_cliente_servicios() {
         $search = $this->input->get("search");
         try {
@@ -1331,6 +1386,119 @@ class Membresias extends BaseController {
                 ->set_output(json_encode(['error' => 'Ocurrió un problema interno del servidor.']));
         }
     }
+    
+    public function obtenerLogTransacciones() {
+        $postdata = file_get_contents("php://input");
+        $request = json_decode($postdata, true); // Decodifica el JSON enviado en la solicitud POST
+        $cliente_id = $request['cliente_id'] ?? null; // Obtén el cliente_id desde el JSON
+    
+        $response = [];
+        try {
+            if (!$cliente_id) {
+                throw new Exception("El parámetro cliente_id es obligatorio.");
+            }
+    
+            $sql = "
+            SELECT 
+                log.transaccion_id,
+                log.cliente_id,
+                log.accion,
+                CASE 
+                    WHEN log.accion = 'UPDATE' THEN
+                        CASE 
+                            WHEN log.campo_cambiado = 'cliente_nombres' THEN 'Nombre Cliente'
+                            WHEN log.campo_cambiado = 'cliente_direccion' THEN 'Direccion Cliente'
+                            WHEN log.campo_cambiado = 'cliente_email' THEN 'Correo Cliente'
+                            WHEN log.campo_cambiado = 'fechaFinMembresia' THEN 'Fecha Fin Membresia'
+                            WHEN log.campo_cambiado = 'cliente_tipomembresia' THEN 'Membresia'
+                            WHEN log.campo_cambiado = 'estado' THEN 'Estado Actividad'
+                            WHEN log.campo_cambiado = 'cliente_estado_fechavencimiento' THEN 'Opción Estado'
+                            ELSE log.campo_cambiado
+                        END
+                    WHEN log.accion = 'INSERT' THEN 'Datos Insertados'
+                    WHEN log.accion = 'DELETE' THEN 'Estado'
+                END AS campo_modificado,
+                CASE
+                    WHEN log.accion = 'UPDATE' THEN CONCAT('Anterior: ', log.valor_anterior, ' | Nuevo: ', log.valor_nuevo)
+                    WHEN log.accion = 'INSERT' THEN (
+                        SELECT GROUP_CONCAT(
+                            REPLACE(REPLACE(REPLACE(REPLACE(value, '\"', ''), '{', ''), '}', ''), ':', ': ')
+                            SEPARATOR '<br>'
+                        )
+                        FROM JSON_TABLE(log.valor_nuevo, '$.*' COLUMNS(value VARCHAR(255) PATH '$')) temp
+                    )
+                    WHEN log.accion = 'DELETE' THEN CONCAT('Estado: ', log.valor_nuevo)
+                END AS detalles,
+                CONCAT(emp.empleado_nombres, ' ', emp.empleado_apellidos) AS empleado_nombre,
+                log.motivo AS empleado_apellido,
+                log.fecha
+            FROM 
+                transacciones_cliente_log log
+            LEFT JOIN 
+                empleados emp ON log.empleado_id = emp.empleado_id
+            WHERE 
+                log.cliente_id = ?
+            ORDER BY 
+                log.fecha DESC";
+    
+            $query = $this->db->query($sql, [$cliente_id]);
+    
+            if (!$query) {
+                throw new Exception("Error al obtener el log de transacciones.");
+            }
+    
+            $response['estado'] = true;
+            $response['mensaje'] = 'Log de transacciones obtenido exitosamente.';
+            $response['data'] = $query->result(); // Devuelve los resultados originales sin transformación
+        } catch (Exception $e) {
+            $response['estado'] = false;
+            $response['mensaje'] = 'Error: ' . $e->getMessage();
+            log_message('error', 'Error en obtenerLogTransacciones: ' . $e->getMessage());
+        }
+    
+        echo json_encode($response);
+        exit();
+    }
 
+    public function consultarCredenciales() {
+        try {
+            $data_token = json_decode($this->consultar_token(), true);
+            if (!$data_token) {
+                throw new CustomException('Error al obtener el token.', 401);
+            }
+            $postdata = file_get_contents("php://input");
+            $request = json_decode($postdata, true);
+    
+            $usuario = $request['usuario'] ?? null;
+            $clave = $request['clave'] ?? null;
+            $motivo = $request['motivo'] ?? null;
+            // Debug para verificar los valores
+            $empleado = $this->Servicio_m->consultarCredenciales($usuario, $clave);
+
+            if ($empleado) {
+                echo json_encode([
+                    'status' => true,
+                    'message' => 'Credenciales válidas.',
+                    'data' => $empleado,
+                    'motivo' => $motivo
+                ]);
+            } else {
+                echo json_encode([
+                    'status' => false,
+                    'message' => 'Credenciales inválidas.'
+                ]);
+            }
+    
+ 
+        } catch (Exception $e) { 
+            $this->output
+                ->set_status_header(500)
+                ->set_content_type('application/json')
+                ->set_output(json_encode([
+                    'status' => false,
+                    'message' => 'Error interno del servidor.'
+                ]));
+        }
+    }
 }
 ?>

@@ -14,7 +14,7 @@ class Web_service extends BaseController {
 
 	  public function  __construct(){
     parent::__construct();
-    
+    $this->load->model('Servicio_m');
 
 $this->objOfJwt = new ImplementJwt();
 
@@ -3355,38 +3355,86 @@ ORDER BY fecha_vencimiento DESC
     $request = json_decode($postdata, true); 
     $id_cliente = $request['id'];
     $motivo = $request["mensaje"];
-    $tipo_transaccion = 'DELETE'; 
-    $this->db->trans_begin();  
+    $tipo_transaccion = 'DELETE';
+    $transaccion_id = $this->generarUUID(); // Generar un identificador único para la transacción
 
-    try { 
+    $this->db->trans_begin(); // Iniciar transacción
+
+    try {
+        // Validar que el cliente existe y está activo
+        $cliente = $this->Servicio_m->obtener_cliente_por_id($id_cliente);
+        if (!$cliente) {
+            throw new Exception("El cliente no existe o ya está inactivo.");
+        }
+
+        // Cambios detectados para registrar en el log
+        $cambios = [
+            [
+                'campo_cambiado' => 'estado',
+                'valor_anterior' => $cliente->estado,
+                'valor_nuevo' => '0',
+            ],
+            [
+                'campo_cambiado' => 'cliente_motivoeliminacion',
+                'valor_anterior' => $cliente->cliente_motivoeliminacion,
+                'valor_nuevo' => $motivo,
+            ]
+        ];
+
+        // Actualizar estado del cliente a inactivo y registrar el motivo de eliminación
         $update_query = "
             UPDATE clientes 
             SET estado = '0', cliente_motivoeliminacion = ?
             WHERE cliente_id = ?";
         $this->db->query($update_query, array($motivo, $id_cliente)); 
-        $log_query = "
-            INSERT INTO transacciones_cliente_log (cliente_id, empleado_id, tipo_transaccion, motivo)
-            VALUES (?, ?, ?, ?)";
-        $this->db->query($log_query, array($id_cliente, $id_empleado, $tipo_transaccion, $motivo));
 
-        if ($this->db->trans_status() === FALSE) {
-            throw new Exception("Error al realizar la transacción");
+        // Registrar cada cambio en el log de transacciones
+        foreach ($cambios as $cambio) {
+            $log_query = "
+                INSERT INTO transacciones_cliente_log (transaccion_id, cliente_id, empleado_id, accion, campo_cambiado, valor_anterior, valor_nuevo, motivo)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+            $this->db->query($log_query, array(
+                $transaccion_id,
+                $id_cliente,
+                $id_empleado,
+                $tipo_transaccion,
+                $cambio['campo_cambiado'],
+                $cambio['valor_anterior'],
+                $cambio['valor_nuevo'],
+                $motivo
+            ));
         }
-        $this->db->trans_commit();
+
+        // Verificar el estado de la transacción
+        if ($this->db->trans_status() === FALSE) {
+            throw new Exception("Error al realizar la transacción.");
+        }
+
+        $this->db->trans_commit(); // Confirmar transacción
 
         $response["estado"] = true;
-        $response["mensaje"] = "Cliente eliminado correctamente y transacción registrada";
+        $response["mensaje"] = "Cliente eliminado correctamente y transacción registrada.";
     } catch (Exception $e) {
-        // Revertir transacción
-        $this->db->trans_rollback();
+        $this->db->trans_rollback(); // Revertir transacción
 
         $response["estado"] = false;
         $response["mensaje"] = "Error: " . $e->getMessage();
     }
+
     echo json_encode($response);
     exit();
 }
 
+private function generarUUID() {
+  return sprintf(
+      '%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
+      mt_rand(0, 0xffff), mt_rand(0, 0xffff),
+      mt_rand(0, 0xffff),
+      mt_rand(0, 0x0fff) | 0x4000,
+      mt_rand(0, 0x3fff) | 0x8000,
+      mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff)
+  );
+}
   public function cargar_platos_productos()
   {
      $data_token = json_decode($this->consultar_token(),true);

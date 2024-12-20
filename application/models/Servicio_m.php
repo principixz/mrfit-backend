@@ -471,4 +471,42 @@ class Servicio_m extends CI_Model{
             return false;
         }
     }
+
+    public function consultarCredenciales($usuario, $clave) {
+        try {
+            // Seleccionamos los datos necesarios
+            $this->db->select('empleado_id, empleado_nombres, empleado_usuario');
+            $this->db->from('empleados');
+            $this->db->where('empleado_usuario', $usuario);
+            $this->db->where('empleado_clave', $clave);
+    
+            $query = $this->db->get();
+    
+            if ($query->num_rows() > 0) {
+                return $query->row(); // Retorna los datos del empleado si coincide
+            } else {
+                return null; // Retorna null si no hay coincidencias
+            }
+        } catch (Exception $e) {
+            // Registrar el error en los logs
+            log_message('error', 'Error en consultarCredenciales: ' . $e->getMessage());
+            return false; // Retornar false en caso de error
+        }
+    }
+
+    public function log_cambio_cliente($transaccion_id,$cliente_id, $accion, $campo_cambiado, $valor_anterior, $valor_nuevo, $motivo, $empleado_id) {
+        $data = [
+            'transaccion_id' => $transaccion_id,
+            'cliente_id' => $cliente_id,
+            'accion' => $accion,
+            'campo_cambiado' => $campo_cambiado,
+            'valor_anterior' => $valor_anterior,
+            'valor_nuevo' => $valor_nuevo,
+            'motivo' => $motivo,
+            'empleado_id' => $empleado_id,
+            'fecha' => date('Y-m-d H:i:s')
+        ];
+    
+        $this->db->insert('transacciones_cliente_log', $data);
+    }
 }
