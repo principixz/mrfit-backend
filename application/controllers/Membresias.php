@@ -1110,8 +1110,8 @@ class Membresias extends BaseController {
                 ]);
                 return;
             } else {
-                $this->db->trans_rollback();
-                //$this->db->trans_commit();
+                //$this->db->trans_rollback();
+                $this->db->trans_commit();
             }
     
             // Respuesta final exitosa
