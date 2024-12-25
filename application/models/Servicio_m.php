@@ -509,4 +509,310 @@ class Servicio_m extends CI_Model{
     
         $this->db->insert('transacciones_cliente_log', $data);
     }
+
+    public function obtener_asistencias_agrupadas() {
+        try {
+            $this->db->select("
+                DATE_FORMAT(asistencia.asistencia_fecha_hora, '%Y-%m-%d %H:00:00') AS fecha_hora,
+                CAST(COUNT(DISTINCT asistencia.cliente_id) AS DECIMAL(10,2)) AS total_clientes
+            ", false);
+            $this->db->from('asistencia');
+            $this->db->group_by("DATE_FORMAT(asistencia.asistencia_fecha_hora, '%Y-%m-%d %H:00:00')");
+            $this->db->order_by('total_clientes', 'ASC');
+    
+            $query = $this->db->get();
+    
+            if (!$query) {
+                throw new Exception('Error al ejecutar la consulta.');
+            }
+    
+            return $query->result_array();
+        } catch (Exception $e) {
+            log_message('error', 'Error en obtener_asistencias_agrupadas: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    public function obtener_usuarios_activos_inactivos() {
+        try {
+            $this->db->select("
+                SUM(
+                    CASE 
+                        WHEN c.estado = 1 AND c.cliente_estado_fechavencimiento = 1 AND c.fechaFinMembresia > NOW() THEN 1
+                        WHEN c.estado = 1 AND c.cliente_estado_fechavencimiento = 0 AND EXISTS (
+                            SELECT 1 
+                            FROM membresia m 
+                            WHERE m.cliente_id = c.cliente_id 
+                            AND m.membresia_fecha_fin > NOW()
+                        ) THEN 1
+                        ELSE 0
+                    END
+                ) AS total_clientes_activos,
+                SUM(
+                    CASE 
+                        WHEN c.estado = 1 AND c.cliente_estado_fechavencimiento = 1 AND (c.fechaFinMembresia <= NOW() OR c.fechaFinMembresia IS NULL) THEN 1
+                        WHEN c.estado = 1 AND c.cliente_estado_fechavencimiento = 0 AND NOT EXISTS (
+                            SELECT 1 
+                            FROM membresia m 
+                            WHERE m.cliente_id = c.cliente_id 
+                            AND m.membresia_fecha_fin > NOW()
+                        ) THEN 1
+                        ELSE 0
+                    END
+                ) AS total_clientes_inactivos,
+                SUM(
+                        CASE
+                            WHEN c.estado = 1 AND c.cliente_estado_fechavencimiento = 1 AND DATE(c.fechaFinMembresia) = CURDATE() THEN 1
+                            WHEN c.estado = 1 AND c.cliente_estado_fechavencimiento = 0 AND EXISTS (
+                                SELECT 1 
+                                FROM membresia m 
+                                WHERE m.cliente_id = c.cliente_id 
+                                AND DATE(m.membresia_fecha_fin) = CURDATE()
+                            ) THEN 1
+                            ELSE 0
+                        END
+                    ) AS total_clientes_vencen_hoy
+            ", false);
+            $this->db->from('clientes c');
+    
+            $query = $this->db->get();
+    
+            if (!$query) {
+                throw new Exception('Error al ejecutar la consulta.');
+            }
+    
+            $result = $query->row_array();
+    
+            // Calcula totales y porcentajes
+            $activos = (int) $result['total_clientes_activos'];
+            $inactivos = (int) $result['total_clientes_inactivos'];
+            $vencenhoy = (int) $result['total_clientes_vencen_hoy'];
+            $total = $activos + $inactivos;
+    
+            $porcentaje_activos = $total > 0 ? number_format(($activos / $total) * 100, 2) : 0.00;
+            $porcentaje_inactivos = $total > 0 ? number_format(($inactivos / $total) * 100, 2) : 0.00;
+    
+            // Mensajes motivacionales
+            $mensajes = $this->generarMensajes($porcentaje_activos, $porcentaje_inactivos, $vencenhoy);
+
+            return [
+                'activos' => $activos,
+                'inactivos' => $inactivos,
+                'vencenhoy' => $vencenhoy,
+                'total' => $total,
+                'porcentaje_activos' => $porcentaje_activos,
+                'porcentaje_inactivos' => $porcentaje_inactivos,
+                'mensaje_activos' => $mensajes['mensaje_activos'],
+                'mensaje_inactivos' => $mensajes['mensaje_inactivos'],
+                'mensaje_vencen_hoy' => $mensajes['mensaje_vencen_hoy']
+            ];
+        } catch (Exception $e) {
+            log_message('error', 'Error en obtener_usuarios_activos_inactivos: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    function generarMensajes($porcentaje_activos, $porcentaje_inactivos, $vencidos_hoy) {
+        // Mensajes para clientes activos
+        $mensajes_activos = [
+            "¡Increíble! El {$porcentaje_activos}% de tus clientes está comprometido con su salud.",
+            "¡Buen trabajo! El {$porcentaje_activos}% de tus clientes está activo.",
+            "Tus esfuerzos están dando frutos: {$porcentaje_activos}% de clientes activos.",
+            "¡Felicitaciones! {$porcentaje_activos}% de tus clientes está en acción.",
+            "El {$porcentaje_activos}% de tus clientes está disfrutando del gimnasio.",
+            "¡Motivador! {$porcentaje_activos}% de tus clientes sigue entrenando.",
+            "¡Bravo! Tienes un impresionante {$porcentaje_activos}% de clientes activos.",
+            "{$porcentaje_activos}% de tus clientes eligen entrenar contigo.",
+            "¡Gran desempeño! {$porcentaje_activos}% de tus clientes sigue en forma.",
+            "¡Excelente! Tus clientes activos representan el {$porcentaje_activos}%.",
+            "El compromiso de tus clientes es alto: {$porcentaje_activos}%.",
+            "¡Tu gimnasio inspira! {$porcentaje_activos}% sigue activo.",
+            "{$porcentaje_activos}% de tus clientes se mantienen constantes. ¡Sigue así!",
+            "¡Enhorabuena! {$porcentaje_activos}% de tus clientes eligen salud.",
+            "{$porcentaje_activos}% de tus clientes están en el camino correcto.",
+            "¡Genial! {$porcentaje_activos}% aprovecha tus instalaciones.",
+            "El esfuerzo vale la pena: {$porcentaje_activos}% sigue motivado.",
+            "{$porcentaje_activos}% de tus clientes están logrando sus metas.",
+            "¡Qué orgullo! {$porcentaje_activos}% de tus clientes confía en tu gimnasio.",
+            "{$porcentaje_activos}% de tus clientes disfruta entrenar contigo.",
+            "¡Sigue motivando! {$porcentaje_activos}% está comprometido.",
+            "{$porcentaje_activos}% de tus clientes están mejorando cada día.",
+            "{$porcentaje_activos}% de tus clientes están construyendo hábitos saludables.",
+            "¡Qué motivador! {$porcentaje_activos}% sigue adelante.",
+            "Tus clientes están comprometidos: {$porcentaje_activos}%.",
+            "¡Gran esfuerzo! {$porcentaje_activos}% está cambiando su vida.",
+            "{$porcentaje_activos}% de tus clientes siguen creciendo contigo.",
+            "¡Tus clases inspiran! {$porcentaje_activos}% sigue adelante.",
+            "{$porcentaje_activos}% de tus clientes están marcando la diferencia.",
+            "El {$porcentaje_activos}% de tus clientes elige mejorar su salud contigo."
+        ];
+    
+        $mensajes_inactivos = [
+            "Aprovecha la oportunidad: {$porcentaje_inactivos}% de tus clientes necesita motivación.",
+            "Haz una campaña especial: {$porcentaje_inactivos}% de clientes está inactivo.",
+            "El {$porcentaje_inactivos}% de tus clientes podría regresar con una oferta.",
+            "{$porcentaje_inactivos}% está esperando la motivación adecuada. ¡Actúa ya!",
+            "Conecta con el {$porcentaje_inactivos}% de tus clientes inactivos.",
+            "{$porcentaje_inactivos}% de tus clientes podría estar esperando una invitación.",
+            "Es momento de reactivar al {$porcentaje_inactivos}% de tus clientes.",
+            "Una campaña estratégica puede recuperar al {$porcentaje_inactivos}%.",
+            "{$porcentaje_inactivos}% de tus clientes puede volver con un incentivo.",
+            "Hazlos regresar: {$porcentaje_inactivos}% de tus clientes te necesita.",
+            "Es hora de traer al {$porcentaje_inactivos}% de vuelta al gimnasio.",
+            "¡Desafío aceptado! Reactiva al {$porcentaje_inactivos}% de tus clientes.",
+            "{$porcentaje_inactivos}% puede regresar con promociones personalizadas.",
+            "Invita al {$porcentaje_inactivos}% a reiniciar su camino de salud.",
+            "Motiva al {$porcentaje_inactivos}% con nuevos retos y programas.",
+            "Conquista al {$porcentaje_inactivos}% con actividades innovadoras.",
+            "Una llamada puede marcar la diferencia para el {$porcentaje_inactivos}%.",
+            "{$porcentaje_inactivos}% de tus clientes merece una segunda oportunidad.",
+            "{$porcentaje_inactivos}% necesita un recordatorio de sus metas.",
+            "¡Súper oportunidad! Reactiva al {$porcentaje_inactivos}% de clientes.",
+            "Haz que el {$porcentaje_inactivos}% vuelva con nuevas experiencias.",
+            "Diseña una campaña para reactivar al {$porcentaje_inactivos}%.",
+            "El {$porcentaje_inactivos}% puede estar esperando algo nuevo.",
+            "{$porcentaje_inactivos}% de tus clientes necesita motivación adicional.",
+            "{$porcentaje_inactivos}% puede ser conquistado con una sesión gratuita.",
+            "{$porcentaje_inactivos}% puede volver con desafíos semanales.",
+            "Crea un programa especial para el {$porcentaje_inactivos}%.",
+            "{$porcentaje_inactivos}% puede ser tu siguiente éxito en recuperación.",
+            "Recuperar al {$porcentaje_inactivos}% es una meta alcanzable.",
+            "Reactivar al {$porcentaje_inactivos}% puede ser tu próximo logro."
+        ];
+
+        $mensajes_vencen_hoy = [
+            "¡No pierdas la oportunidad! {$vencidos_hoy} clientes tienen membresías que vencen hoy.",
+            "Recuerda contactar a los {$vencidos_hoy} clientes que vencen hoy para renovar.",
+            "¡Día de acción! Hay {$vencidos_hoy} clientes que necesitan renovar hoy.",
+            "Tus clientes que vencen hoy son una oportunidad para fidelizarlos.",
+            "Ofrece promociones especiales para los {$vencidos_hoy} clientes que vencen hoy.",
+            "{$vencidos_hoy} clientes están a punto de vencer hoy. ¡Es tu oportunidad!",
+            "El día de hoy tienes {$vencidos_hoy} clientes a los que puedes impactar.",
+            "Contacta a los {$vencidos_hoy} clientes que vencen hoy para ofrecerles continuidad.",
+            "{$vencidos_hoy} clientes tienen vencimientos hoy. ¡Haz que se queden contigo!",
+            "Es un gran día para renovar: {$vencidos_hoy} clientes vencen hoy."
+        ];
+    
+        // Mensaje especial si no hay clientes vencidos hoy
+        if ($vencidos_hoy == 0) {
+            $mensajes_vencen_hoy = [
+                "¡Genial! Hoy no tienes vencimientos pendientes.",
+                "Parece que todos tus clientes están al día. ¡Buen trabajo!",
+                "Hoy es un día perfecto para planificar futuras renovaciones.",
+                "Sin vencimientos pendientes hoy. ¡A seguir motivando a tus clientes!",
+                "Tus clientes están comprometidos. ¡No hay vencimientos hoy!"
+            ];
+        }
+    
+        // Selecciona un mensaje aleatorio de cada categoría
+        $mensaje_activo = $mensajes_activos[array_rand($mensajes_activos)];
+        $mensaje_inactivo = $mensajes_inactivos[array_rand($mensajes_inactivos)];
+        $mensaje_vencen_hoy = $mensajes_vencen_hoy[array_rand($mensajes_vencen_hoy)];
+
+        return [
+            'mensaje_activos' => $mensaje_activo,
+            'mensaje_inactivos' => $mensaje_inactivo,
+            'mensaje_vencen_hoy' => $mensaje_vencen_hoy
+        ];
+    }
+
+    public function obtenerVencidosHoy() {
+        try {
+            $this->db->select("
+                c.cliente_id,
+                c.cliente_nombres,
+                c.cliente_dni,
+                c.fechaFinMembresia AS fecha_vencimiento,
+                DATEDIFF(c.fechaFinMembresia, CURDATE()) AS dias_para_vencimiento
+            ", false);
+            $this->db->from('clientes c');
+            $this->db->where('c.estado', 1);
+            $this->db->group_start();
+            $this->db->where('(c.cliente_estado_fechavencimiento = 1 AND DATE(c.fechaFinMembresia) = CURDATE())', null, false);
+            $this->db->or_where("c.cliente_estado_fechavencimiento = 0 AND EXISTS (
+                SELECT 1 
+                FROM membresia m 
+                WHERE m.cliente_id = c.cliente_id 
+                AND DATE(m.membresia_fecha_fin) = CURDATE()
+            )", null, false);
+            $this->db->group_end();
+            $this->db->order_by('c.fechaFinMembresia', 'ASC');
+    
+            $query = $this->db->get();
+            if (!$query) {
+                throw new Exception('Error al ejecutar la consulta.');
+            }
+    
+            return $query->result_array();
+        } catch (Exception $e) {
+            log_message('error', 'Error en obtenerVencidosHoy: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    public function obtener_vencimientos_proximos() {
+        try {
+            $sql = "SELECT 
+            c.cliente_id AS 'id',
+            c.cliente_nombres AS 'nombre',
+            c.cliente_dni AS 'dni',
+            tm.tipo_membresia_descripcion AS 'tipo_membresia_nombre',
+            CASE 
+                WHEN c.cliente_estado_fechavencimiento = 1 THEN c.fechaFinMembresia
+                ELSE (
+                    SELECT m.membresia_fecha_fin 
+                    FROM membresia m
+                    WHERE m.cliente_id = c.cliente_id
+                    ORDER BY m.membresia_fecha_fin DESC 
+                    LIMIT 1
+                )
+            END AS fecha_vencimiento,
+            DATEDIFF(
+                CASE 
+                    WHEN c.cliente_estado_fechavencimiento = 1 THEN c.fechaFinMembresia
+                    ELSE (
+                        SELECT m.membresia_fecha_fin 
+                        FROM membresia m
+                        WHERE m.cliente_id = c.cliente_id
+                        ORDER BY m.membresia_fecha_fin DESC 
+                        LIMIT 1
+                    )
+                END, CURDATE()
+            ) AS dias_para_vencimiento,
+            CASE 
+                WHEN c.cliente_estado_fechavencimiento = 1 THEN 'Opción Activada'
+                ELSE 'Opción Desactivada'
+            END AS estado_opcion
+        FROM 
+            clientes c
+        LEFT JOIN 
+            tipo_membresia tm ON c.cliente_tipomembresia = tm.tipo_membresia_id
+        WHERE 
+            c.estado = 1
+            AND c.cliente_nombres IS NOT NULL
+            AND (
+                (c.cliente_estado_fechavencimiento = 1 AND c.fechaFinMembresia > CURDATE() AND c.fechaFinMembresia <= DATE_ADD(CURDATE(), INTERVAL 3 DAY)) 
+                OR 
+                (c.cliente_estado_fechavencimiento = 0 AND EXISTS (
+                    SELECT 1
+                    FROM membresia m
+                    WHERE m.cliente_id = c.cliente_id
+                    AND m.membresia_fecha_fin > CURDATE() 
+                    AND m.membresia_fecha_fin <= DATE_ADD(CURDATE(), INTERVAL 3 DAY)
+                ))
+            )
+        ORDER BY 
+            fecha_vencimiento ASC ";
+            $query = $this->db->query($sql);
+    
+            if (!$query) {
+                throw new Exception('Error al ejecutar la consulta.');
+            }
+    
+            return $query->result_array();
+        } catch (Exception $e) {
+            log_message('error', 'Error en obtener_vencimientos_proximos: ' . $e->getMessage());
+            return false;
+        }
+    }
 }

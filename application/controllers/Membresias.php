@@ -1500,5 +1500,143 @@ class Membresias extends BaseController {
                 ]));
         }
     }
+
+    public function traerAsistenciasPorHora() {
+        try {
+            $data_token = json_decode($this->consultar_token(), true);
+            if (!$data_token) {
+                throw new CustomException('Error al obtener el token.', 401);
+            }
+    
+            $data = $this->Servicio_m->obtener_asistencias_agrupadas();
+
+            if ($data === false) {
+                $this->output
+                    ->set_status_header(500)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['error' => 'No se pudo obtener la información.']));
+                return;
+            }
+            
+            $points = array_map(function ($row) {
+                $timestamp = $row['fecha_hora'] ;// Convertir a milisegundos
+                return [$timestamp, (float)$row['total_clientes']];
+            }, $data);
+            
+            echo json_encode(["points" => $points]);
+        } catch (CustomException $e) {
+            log_message('error', 'Error en traerAsistenciasPorHora: ' . $e->getMessage());
+            $this->output
+                ->set_status_header($e->getHttpCode())
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['error' => $e->getMessage()]));
+        } catch (Exception $e) {
+            log_message('error', 'Error general en traerAsistenciasPorHora: ' . $e->getMessage());
+            $this->output
+                ->set_status_header(500)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['error' => 'Ocurrió un problema interno del servidor.']));
+        }
+    }
+    public function traerUsuariosActivosInactivos() {
+        try {
+            $data_token = json_decode($this->consultar_token(), true);
+            if (!$data_token) {
+                throw new CustomException('Error al obtener el token.', 401);
+            }
+    
+            $usuarios = $this->Servicio_m->obtener_usuarios_activos_inactivos();
+    
+            if ($usuarios === false) {
+                $this->output
+                    ->set_status_header(500)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['error' => 'No se pudo obtener la información.']));
+                return;
+            }
+    
+            echo json_encode([
+                "activos" => $usuarios['activos'],
+                "inactivos" => $usuarios['inactivos'],
+                "total" => $usuarios['total'],
+                "porcentaje_activos" => $usuarios['porcentaje_activos'],
+                "porcentaje_inactivos" => $usuarios['porcentaje_inactivos'],
+                'mensaje_activos' => $usuarios['mensaje_activos'],
+                'mensaje_inactivos' => $usuarios['mensaje_inactivos'],
+                'mensaje_vencen_hoy' => $usuarios['mensaje_vencen_hoy'],
+                'vencenhoy' => $usuarios['vencenhoy']
+            ]);
+        } catch (CustomException $e) {
+            log_message('error', 'Error en traerUsuariosActivosInactivos: ' . $e->getMessage());
+            $this->output
+                ->set_status_header($e->getHttpCode())
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['error' => $e->getMessage()]));
+        } catch (Exception $e) {
+            log_message('error', 'Error general en traerUsuariosActivosInactivos: ' . $e->getMessage());
+            $this->output
+                ->set_status_header(500)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['error' => 'Ocurrió un problema interno del servidor.']));
+        }
+    }
+
+    public function traerVencidosHoy() {
+        try {
+            $data_token = json_decode($this->consultar_token(), true);
+            if (!$data_token) {
+                throw new CustomException('Error al obtener el token.', 401);
+            }
+    
+            $vencidos = $this->Servicio_m->obtenerVencidosHoy();
+    
+            if ($vencidos === false) {
+                $this->output
+                    ->set_status_header(500)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['error' => 'No se pudo obtener la información.']));
+                return;
+            }
+    
+            $this->output
+                ->set_status_header(200)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['vencidos_hoy' => $vencidos]));
+        } catch (CustomException $e) {
+            log_message('error', 'Error en traerVencidosHoy: ' . $e->getMessage());
+            $this->output
+                ->set_status_header($e->getHttpCode())
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['error' => $e->getMessage()]));
+        } catch (Exception $e) {
+            log_message('error', 'Error general en traerVencidosHoy: ' . $e->getMessage());
+            $this->output
+                ->set_status_header(500)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['error' => 'Ocurrió un problema interno del servidor.']));
+        }
+    }
+
+    public function traerVencimientosProximos() {
+        try {
+            $data = $this->Servicio_m->obtener_vencimientos_proximos();
+            
+            if ($data === false) {
+                $this->output
+                    ->set_status_header(500)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['error' => 'No se pudo obtener la información.']));
+                return;
+            }
+    
+            echo json_encode(['data' => $data]);
+        } catch (Exception $e) {
+            log_message('error', 'Error en traerVencimientosProximos: ' . $e->getMessage());
+            $this->output
+                ->set_status_header(500)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['error' => 'Ocurrió un problema interno del servidor.']));
+        }
+    }
 }
 ?>
