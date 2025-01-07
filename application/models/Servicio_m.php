@@ -815,4 +815,68 @@ class Servicio_m extends CI_Model{
             return false;
         }
     }
+
+    public function obtener_membresias_renovadas() {
+        try {
+            $sql = "
+                SELECT 
+                    c.cliente_id as id,
+                    c.cliente_dni as dni,
+                    tm.tipo_membresia_descripcion AS tipo_membresia_descripcion,
+                    lg.fecha as fecha_modificacion, 
+                    CASE 
+                        WHEN c.cliente_estado_fechavencimiento = 1 THEN c.fechaFinMembresia
+                        ELSE (
+                            SELECT m.membresia_fecha_fin 
+                            FROM membresia m
+                            WHERE m.cliente_id = c.cliente_id
+                            ORDER BY m.membresia_fecha_fin DESC 
+                            LIMIT 1
+                        )
+                    END AS fecha_vencimiento,
+                    lg.motivo AS motivo,
+                    lg.valor_anterior AS valor_anterior,
+                    lg.valor_nuevo AS valor_nuevo,
+                    e.empleado_nombres AS empleado_nombres,
+                    CONCAT(
+                        'El colaborador <b>\"', 
+                        e.empleado_nombres, 
+                        '\"</b> actualizó la membresía \"', 
+                        tm.tipo_membresia_descripcion, 
+                        '\". La fecha de vencimiento anterior era <b>\"', 
+                        lg.valor_anterior, 
+                        '\"</b> y ahora es <b>\"', 
+                        lg.valor_nuevo, 
+                        '\"</b>. Motivo del cambio: ', 
+                        lg.motivo, 
+                        '.'
+                    ) AS descripcion_cambio
+                FROM 
+                    clientes c
+                LEFT JOIN 
+                    tipo_membresia tm ON c.cliente_tipomembresia = tm.tipo_membresia_id
+                LEFT JOIN 
+                    transacciones_cliente_log lg ON c.cliente_id = lg.cliente_id
+                LEFT JOIN 
+                    empleados e ON lg.empleado_id = e.empleado_id
+                WHERE 
+                    lg.accion = 'UPDATE'
+                    AND lg.campo_cambiado = 'fechaFinMembresia'
+                    AND c.estado = 1
+                ORDER BY 
+                    lg.fecha DESC;
+            ";
+    
+            $query = $this->db->query($sql);
+    
+            if (!$query) {
+                throw new Exception('Error al ejecutar la consulta.');
+            }
+    
+            return $query->result_array();
+        } catch (Exception $e) {
+            log_message('error', 'Error en obtener_membresias_renovadas: ' . $e->getMessage());
+            return false;
+        }
+    }
 }

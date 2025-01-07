@@ -844,6 +844,7 @@ class Membresias extends BaseController {
                     'cliente_direccion' => $request['direccion'],
                     'cliente_telefono' => $request['telefono'],
                     'cliente_email' => $request['correo'],
+                    'estado' => 1,
                     'fechaFinMembresia' => $request['fechaFinMembresia'],
                     'cliente_estado_fechavencimiento' => $cliente_estado_fechavencimiento,
                     'cliente_tipomembresia' => $cliente_tipomembresia
@@ -891,6 +892,7 @@ class Membresias extends BaseController {
                     'cliente_nombres' => $request['nombres'],
                     'cliente_direccion' => $request['direccion'],
                     'cliente_dni' => $dni,
+                    'estado' => 1,
                     'cliente_telefono' => $request['telefono'],
                     'cliente_email' => $request['correo'],
                     'fechaFinMembresia' => $request['fechaFinMembresia'],
@@ -985,8 +987,7 @@ class Membresias extends BaseController {
             $this->db->from('clientes');
             $this->db->join('tipo_membresia', 'clientes.cliente_tipomembresia = tipo_membresia.tipo_membresia_id', 'left');
             $this->db->where('clientes.cliente_dni', $dni);
-            $cliente = $this->db->get()->row();
-    
+            $cliente = $this->db->get()->row(); 
             if (!$cliente) {
                 $mensaje = "❌ Lo sentimos, el DNI proporcionado no está registrado en nuestra base de datos. Por favor, contacte con el personal de recepción para más información.";
                 $mensaje = str_replace('. ', '.<br>', $mensaje);
@@ -1000,17 +1001,82 @@ class Membresias extends BaseController {
     
             // Buscar membresías activas
             $membresias = $this->db
-                ->select('*')
-                ->from('membresia')
-                ->where('cliente_id', $cliente->cliente_id)
-                ->where('membresia_fecha_fin >=', $fechaActual)
-                ->order_by('membresia_fecha_fin', 'DESC')
-                ->get()
-                ->result();
+            ->select('*')
+            ->from('membresia')
+            ->where('cliente_id', $cliente->cliente_id)
+            //->where('membresia_fecha_inicio <=', $fechaActual) // Fecha de inicio debe ser menor o igual a la actual
+            //->where('membresia_fecha_fin >=', $fechaActual) // Fecha de fin debe ser mayor o igual a la actual
+            ->order_by('membresia_fecha_fin', 'DESC') // Ordenar por fecha de fin en orden descendente
+            ->get()
+            ->result();
     
+
             $fechaVencimiento = null;
-            if (!empty($membresias)) {
-                $fechaVencimiento = $membresias[0]->membresia_fecha_fin;
+            $membresia_id = null;
+            $membresia_meses = null;
+            $cliente_tipomembresia = null;
+
+
+            $fechaActualObj = new DateTime($fechaActual);
+
+            $membresiaActiva = null;
+            $membresiaFutura = null;
+            
+            foreach ($membresias as $membresia) {
+                $fechaInicioObj = new DateTime($membresia->membresia_fecha_inicio);
+                $fechaFinObj = new DateTime($membresia->membresia_fecha_fin);
+            
+                if ($fechaInicioObj <= $fechaActualObj && $fechaFinObj >= $fechaActualObj) {
+                    // Membresía activa
+                    $membresiaActiva = $membresia;
+                    break;
+                } elseif ($fechaInicioObj > $fechaActualObj) {
+                    // Membresía futura
+                    $membresiaFutura = $membresia;
+                    break;
+                }
+            }
+            if ($membresiaActiva) {
+                $membresias = $membresiaActiva; 
+                $fechaVencimiento = $membresias->membresia_fecha_fin;
+                $membresia_id = $membresias->membresia_id;
+                $membresia_meses = $membresias->membresia_meses;
+                $cliente_tipomembresia = $cliente->cliente_tipomembresia;
+                // Verificar membresía interdiaria
+                if ($cliente->cliente_tipomembresia == 23) {
+                    // Calcular días permitidos
+                    $diasPermitidos = $membresias->membresia_meses * 15;
+
+                    // Contar asistencias para esta membresía
+                    $totalAsistencias = $this->db
+                        ->where('cliente_id', $cliente->cliente_id)
+                        ->where('membresia_id', $membresias->membresia_id)
+                        ->count_all_results('asistencia');
+
+                    if ($totalAsistencias >= $diasPermitidos) {
+                        $mensaje = "Estimado <strong>{$cliente->cliente_nombres}</strong>, ha alcanzado el límite de <strong>{$diasPermitidos}</strong> asistencias permitidas para su membresía interdiaria. ❌";
+                        $mensaje = str_replace('. ', '.<br>', $mensaje);
+                        echo json_encode([
+                            'mensaje' => $mensaje,
+                            'estado' => 'error',
+                            'nombre' => $cliente->cliente_nombres,
+                            'diasRestantes' => 0,
+                            'estadoVencimiento' => 'error'
+                        ]);
+                        $this->db->trans_rollback();
+                        return;
+                    }
+                }
+            } else if ($membresiaFutura) {
+                $mensaje = "Estimado <strong>{$cliente->cliente_nombres}</strong>, su membresía ha vencido. Por favor, renueve su membresía para continuar disfrutando de nuestros servicios. ❌";
+                $mensaje = str_replace('. ', '.<br>', $mensaje);
+                echo json_encode([
+                    'mensaje' => $mensaje,
+                    'estado' => 'error',
+                    'nombre' => $cliente->cliente_nombres
+                ]);
+                $this->db->trans_rollback();
+                return;
             } else if (isset($cliente->fechaFinMembresia) && $cliente->fechaFinMembresia >= $fechaActual) {
                 $fechaVencimiento = $cliente->fechaFinMembresia;
             } else {
@@ -1037,8 +1103,10 @@ class Membresias extends BaseController {
             // Calcular días restantes
             $fechaVencimientoObj = new DateTime($fechaVencimiento);
             $fechaActualObj = new DateTime($fechaActual);
-            $diasRestantes = $fechaActualObj->diff($fechaVencimientoObj)->days;
-    
+            //$diasRestantes = $fechaActualObj->diff($fechaVencimientoObj)->days;
+            $diasRestantes = $this->calcular_dias_restantes($cliente->cliente_id, $membresia_id, $membresia_meses, $cliente_tipomembresia, $fechaVencimiento);
+            //$diasRestantes--;
+
             #$estadoVencimiento = 0;
             $estadoVencimientoD = 'success';
             if ($diasRestantes >= 0 && $diasRestantes < 7) {
@@ -1051,8 +1119,13 @@ class Membresias extends BaseController {
     
             // Mensaje amigable con emojis
             $mensajeAmigable = "Estimado usuario, ";
-            if ($fechaVencimiento === $fechaActual) {
+            if ($fechaVencimiento === $fechaActual || $diasRestantes == 0 ) {
+                if($fechaVencimiento === $fechaActual){
                 $mensajeAmigable .= "su membresía vence <strong>hoy</strong> 🛑 <br>";
+                }
+                if($diasRestantes == 0){
+                    $mensajeAmigable .= "su membresía <strong>solo le permite ".$diasPermitidos." ingresos</strong> 🛑 <br>";
+                }
             } else if ($diasRestantes >= 7 && $diasRestantes < 10) {
                 $mensajeAmigable .= "su membresía está próxima a vencer. Le quedan <strong>{$diasRestantes}</strong> días 🛑.<br>";
             } else if ($diasRestantes > 1 && $diasRestantes < 10) {
@@ -1094,7 +1167,8 @@ class Membresias extends BaseController {
                 'cliente_id' => $cliente->cliente_id,
                 'asistencia_fecha_hora' => date('Y-m-d H:i:s'),
                 'asistencia_fecha' => $fechaActual,
-                'asistencia_estado' => 1
+                'asistencia_estado' => 1,
+                'membresia_id' => $membresia_id
             ];
     
             $this->db->insert('asistencia', $asistenciaData);
@@ -1140,6 +1214,33 @@ class Membresias extends BaseController {
         }
     }
 
+    private function calcular_dias_restantes($cliente_id, $membresia_id, $membresia_meses, $tipo_membresia_id, $fecha_vencimiento) {
+        $fechaActual = new DateTime();
+        $fechaVencimiento = new DateTime($fecha_vencimiento);
+    
+        // Días hasta la fecha de vencimiento
+        $diasHastaVencimiento = $fechaActual->diff($fechaVencimiento)->days; 
+        // Verificar si es membresía interdiaria
+        if ($tipo_membresia_id == 23) {
+            // Calcular asistencias restantes
+            $diasPermitidos = $membresia_meses * 15;
+    
+            // Contar asistencias registradas para esta membresía
+            $asistenciasRegistradas = $this->db
+                ->where('cliente_id', $cliente_id)
+                ->where('membresia_id', $membresia_id)
+                ->count_all_results('asistencia');
+    
+            // Calcular días restantes considerando asistencias permitidas
+            $diasRestantesPorAsistencias = max($diasPermitidos - $asistenciasRegistradas, 0);
+    
+            // Devolver el menor entre días hasta vencimiento y días restantes por asistencias
+            return min($diasHastaVencimiento, $diasRestantesPorAsistencias);
+        }
+    
+        // Si no es interdiaria, devolver los días hasta vencimiento
+        return $diasHastaVencimiento;
+    }
 
     public function buscar_tabla_clientes(){
         $data_token = json_decode($this->consultar_token(),true);
@@ -1305,6 +1406,7 @@ class Membresias extends BaseController {
                 $html1="";
                 $nestedData['id'] = $post->id;
                 $nestedData['dni'] = $post->cliente_dni;
+                $nestedData['tipomembresiaid'] = $post->tipo_membresia_id;
                 $nestedData['nombre'] = $post->cliente_nombres;
                 $nestedData['membresia'] = $post->tipo_membresia_nombre;
                 $nestedData['fecha_vencimiento'] =$post->fecha_vencimiento;
@@ -1619,6 +1721,10 @@ class Membresias extends BaseController {
 
     public function traerVencimientosProximos() {
         try {
+            $data_token = json_decode($this->consultar_token(), true);
+            if (!$data_token) {
+                throw new CustomException('Error al obtener el token.', 401);
+            }
             $data = $this->Servicio_m->obtener_vencimientos_proximos();
             
             if ($data === false) {
@@ -1637,6 +1743,80 @@ class Membresias extends BaseController {
                 ->set_content_type('application/json')
                 ->set_output(json_encode(['error' => 'Ocurrió un problema interno del servidor.']));
         }
+    }
+
+    public function traerMembresiasRenovadas() {
+        try {
+            $data_token = json_decode($this->consultar_token(), true);
+            if (!$data_token) {
+                throw new CustomException('Error al obtener el token.', 401);
+            }
+
+            $data = $this->Servicio_m->obtener_membresias_renovadas();
+    
+            if ($data === false) {
+                $this->output
+                    ->set_status_header(500)
+                    ->set_content_type('application/json')
+                    ->set_output(json_encode(['error' => 'No se pudo obtener la información.']));
+                return;
+            }
+    
+            $this->output
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['data' => $data]));
+        } catch (Exception $e) {
+            log_message('error', 'Error en traerMembresiasRenovadas: ' . $e->getMessage());
+            $this->output
+                ->set_status_header(500)
+                ->set_content_type('application/json')
+                ->set_output(json_encode(['error' => 'Ocurrió un problema interno del servidor.']));
+        }
+    }
+
+    public function get_renewmembresia(){
+        $data_token = json_decode($this->consultar_token(), true);
+        $postdata = file_get_contents("php://input");
+        $request = json_decode($postdata,true); 
+        $cliente_id = $request['id'];
+        if (!$data_token) {
+            throw new CustomException('Error al obtener el token.', 401);
+        }
+        $sqlPagos ="select * from formapago where for_estado=1 "; 
+        $sqlVencimiento = "SELECT 
+            CASE 
+                WHEN clientes.cliente_estado_fechavencimiento = 1 THEN clientes.fechaFinMembresia
+                ELSE (
+                    SELECT membresia.membresia_fecha_fin 
+                    FROM membresia 
+                    WHERE membresia.cliente_id = clientes.cliente_id 
+                    ORDER BY membresia.membresia_fecha_fin DESC 
+                    LIMIT 1
+                )
+            END AS fecha_vencimiento
+        FROM 
+            clientes
+        WHERE 
+            clientes.cliente_id = ? 
+            AND clientes.estado = '1' 
+            AND clientes.cliente_nombres IS NOT NULL
+        LIMIT 1;";
+        $query = $this->db->query($sqlVencimiento, array($cliente_id));
+        if ($query->num_rows() > 0) {
+            $result = $query->row();
+            $fechaVencimiento = $result->fecha_vencimiento;
+            $fecha = new DateTime($fechaVencimiento);
+            $fecha->modify('+0 day');
+            $fechaVencimiento = $fecha->format('Y-m-d');
+        } else {
+            $fechaVencimiento = date('Y-m-d'); // Cliente no encontrado o sin fecha de vencimiento
+        }
+
+        $tipoproducto_id = null;
+        $data["data"]['tiposMembresia'] = $this->Servicio_m->get_servicios($tipoproducto_id);
+        $data["data"]['tarjetas'] = $this->db->query($sqlPagos)->result_array();
+        $data["data"]['fechaFin'] = $fechaVencimiento;
+        echo json_encode($data);
     }
 }
 ?>

@@ -1463,7 +1463,8 @@ public function generar_movimiento_nuevo(
           WHERE sede_caja.id_sede_caja = sesion_caja.id_sede_caja 
           AND sede_caja.id_sede = '" . $infortoken["empresa_sede"] . "' 
           AND sede_caja.id_caja = $id_caja 
-          AND sesion_caja.id_empleado = " . $infortoken['empleado_id'] . " 
+          AND DATE(sesion_caja.ses_fechaapertura) = '" . date('Y-m-d') . "'
+          /* AND sesion_caja.id_empleado = " . $infortoken['empleado_id'] . " */
           AND sesion_caja.ses_estado = 1");
 
       if ($tipomovimiento == 2) {
@@ -1543,6 +1544,7 @@ public function procesar_venta_pago()
 {
     // Declaramos variables
     $data_token = json_decode($this->consultar_token(), true);
+    $empleado_id = ($data_token["empleado_id"]);
     $response = array();
     $post = file_get_contents("php://input");
     $request = json_decode($post, true);
@@ -1578,6 +1580,7 @@ public function procesar_venta_pago()
     $nombreMembresia = $servicio['nombreServicio'];
     $costoMembresia = $servicio['precioServicio'];
     $cantidadMeses = $servicio['cantidad'];
+    $fechaInicio = $servicio['fechaInicio'];
 
     $idsede = $data_token["empresa_sede"];
     $id_caja = 0;
@@ -1713,7 +1716,7 @@ public function procesar_venta_pago()
             throw new Exception("Error en la transacción.");
         }
         
-        $result_membresia = $this->insertar_membresia($pedidoServicio, $idTipoMembresia, $cantidadMeses, $costoMembresia, $id_venta);
+        $result_membresia = $this->insertar_membresia($pedidoServicio, $idTipoMembresia, $cantidadMeses, $costoMembresia, $id_venta, $fechaInicio,$empleado_id);
         if (!$result_membresia['estado']) {
             throw new Exception($result_membresia['mensaje']);
         }
@@ -1733,7 +1736,7 @@ public function procesar_venta_pago()
     exit();
 }
 
-private function insertar_membresia($pedidoServicio, $idTipoMembresia, $cantidadMeses, $costoMembresia, $idventa) {
+private function insertar_membresia($pedidoServicio, $idTipoMembresia, $cantidadMeses, $costoMembresia, $idventa, $fechaInicio, $empleado_id) {
   $this->db->trans_begin(); // Iniciar transacción
 
   try {
@@ -1748,20 +1751,28 @@ private function insertar_membresia($pedidoServicio, $idTipoMembresia, $cantidad
               ];
           }
 
-          // Determinar última fecha de vencimiento
-          $ultima_fecha_fin = null;
-          if ($cliente_db->cliente_estado_fechavencimiento == 1) {
-              $ultima_fecha_fin = $cliente_db->fechaFinMembresia;
-          } else {
-              $membresias = $this->db->select('*')
-                  ->from('membresia')
-                  ->where('cliente_id', $cliente['id'])
-                  ->where('membresia_fecha_fin >', date('Y-m-d'))
-                  ->order_by('membresia_fecha_fin', 'DESC')
-                  ->get()
-                  ->result();
-              $ultima_fecha_fin = count($membresias) > 0 ? $membresias[0]->membresia_fecha_fin : date('Y-m-d');
+          // Verificar conflictos de fechas con membresías existentes
+          $conflictos = $this->db->select('*')
+              ->from('membresia')
+              ->where('cliente_id', $cliente['id'])
+              ->group_start()
+              ->where("'{$fechaInicio}' BETWEEN membresia_fecha_inicio AND membresia_fecha_fin")
+              ->or_where("'{$fechaInicio}' < membresia_fecha_fin")
+              ->group_end()
+              ->get()
+              ->result();
+
+          if (!empty($conflictos)) {
+              $ultimaFechaFinExistente = $conflictos[0]->membresia_fecha_fin;
+              $this->db->trans_rollback();
+              return [
+                  'estado' => false,
+                  'mensaje' => "No se puede registrar la membresía. La nueva fecha de inicio debe ser posterior al {$ultimaFechaFinExistente}."
+              ];
           }
+
+          // Determinar última fecha de vencimiento
+          $ultima_fecha_fin = $fechaInicio;
 
           // Obtener información del tipo de membresía
           $tipo_membresia = $this->db->get_where('tipo_membresia', [
@@ -1776,21 +1787,6 @@ private function insertar_membresia($pedidoServicio, $idTipoMembresia, $cantidad
               ];
           }
 
-          // Validar fechas si tipo_membresia_tipoperiodo = 02
-          if (
-              $tipo_membresia->tipo_membresia_tipoperiodo == '02' &&
-              (
-                  $tipo_membresia->tipo_membresia_fechainicio > date('Y-m-d') ||
-                  $tipo_membresia->tipo_membresia_fechafin < date('Y-m-d')
-              )
-          ) {
-              $this->db->trans_rollback();
-              return [
-                  'estado' => false,
-                  'mensaje' => 'La membresía ha cumplido su ciclo o está fuera del rango de fechas.'
-              ];
-          }
-
           // Calcular nueva fecha de vencimiento
           $fecha_inicio = new DateTime($ultima_fecha_fin);
           $duracion = (int) $tipo_membresia->tipo_membresia_duracion;
@@ -1798,7 +1794,8 @@ private function insertar_membresia($pedidoServicio, $idTipoMembresia, $cantidad
 
           switch ($tipo_membresia->tipo_membresia_tipopago) {
               case '1': // Diario
-                  $fecha_inicio->modify("+{$duracion_total} days");
+                  $dias_a_sumar = $duracion_total - 1;
+                  $fecha_inicio->modify("+{$dias_a_sumar} days");
                   break;
               case '2': // Mensual
                   $fecha_inicio->modify("+{$duracion_total} months");
@@ -1810,10 +1807,38 @@ private function insertar_membresia($pedidoServicio, $idTipoMembresia, $cantidad
 
           $nueva_fecha_fin = $fecha_inicio->format('Y-m-d');
 
+          // Registrar cambios en el log
+          if ($cliente_db->fechaFinMembresia !== $nueva_fecha_fin) {
+              $this->Servicio_m->log_cambio_cliente(
+                  $this->generarUUID(),
+                  $cliente['id'],
+                  'UPDATE',
+                  'fechaFinMembresia',
+                  $cliente_db->fechaFinMembresia,
+                  $nueva_fecha_fin,
+                  'Actualización de membresía por método de venta',
+                  $empleado_id
+              );
+          }
+
+          if ($cliente_db->cliente_tipomembresia != $idTipoMembresia) {
+              $this->Servicio_m->log_cambio_cliente(
+                  $this->generarUUID(),
+                  $cliente['id'],
+                  'UPDATE',
+                  'cliente_tipomembresia',
+                  $cliente_db->cliente_tipomembresia,
+                  $idTipoMembresia,
+                  'Cambio de tipo de membresía por método de venta',
+                  $empleado_id
+              );
+          }
+
           // Actualizar cliente con nueva fecha de vencimiento y cambiar estado
           $this->db->where('cliente_id', $cliente['id']);
           $this->db->update('clientes', [
               'fechaFinMembresia' => $nueva_fecha_fin,
+              'cliente_tipomembresia' => $idTipoMembresia,
               'cliente_estado_fechavencimiento' => 0
           ]);
 
@@ -1849,18 +1874,15 @@ private function insertar_membresia($pedidoServicio, $idTipoMembresia, $cantidad
 }
 
 
-public function ws_informacion_caja()
-{
- $data_token = json_decode($this->consultar_token(),true);
+public function ws_informacion_caja(){
+    $data_token = json_decode($this->consultar_token(),true); 
     $response=array();
     $post=file_get_contents("php://input");  
-    $request=json_decode($post, true);
-
-
-    if ($data_token["empleado_perfil"] != 5 && $data_token["empleado_perfil"] != 8) {
+    $request=json_decode($post, true); 
+    if ($data_token["empleado_perfil"] == 105 && $data_token["empleado_perfil"] == 108) { 
       $this->consultar_saldo_caja(3,$data_token);
     }else{
-      if ($data_token["empleado_perfil"] == 5) {
+      //if ($data_token["empleado_perfil"] != 5) { 
         $estadosesioncaja = $this->Mantenimiento_m->consulta3("SELECT sesion_caja.id_empleado FROM sesion_caja,sede_caja WHERE sesion_caja.id_sede_caja = sede_caja.id_sede_caja and sesion_caja.ses_estado = 1 AND sede_caja.id_sede = ".$data_token["empresa_sede"]." GROUP BY sesion_caja.id_empleado");
         if (isset($estadosesioncaja[0]["id_empleado"])) {
           if ($data_token["empleado_id"] == $estadosesioncaja[0]["id_empleado"]) {
@@ -1872,9 +1894,9 @@ public function ws_informacion_caja()
         }else{
           $this->consultar_saldo_caja(0,$data_token);
         }
-      }else{
-        //$this->consultar_caja_sedes();
-      }     
+      //}else{
+        //$this->consultar_caja_sedes(); no incluye
+      //}     
     }
   }
 
@@ -1887,7 +1909,8 @@ public function ws_informacion_caja()
       $id_sede=$data_token['empresa_sede'];
       $fecha_dia =date("Y-m-d");
       $sql="SELECT MAX(sesion_caja.id_sesion_caja) as ult FROM sede_caja,sesion_caja where sede_caja.id_sede_caja=sesion_caja.id_sede_caja and
-      sede_caja.id_caja=1 and sede_caja.id_sede=".$id_sede." and sesion_caja.id_empleado = ".$data_token["empleado_id"];
+      sede_caja.id_caja=1 and sede_caja.id_sede=".$id_sede." 
+      /* and sesion_caja.id_empleado = ".$data_token["empleado_id"]." */ ";
       $ulsesionf=$this->Mantenimiento_m->consulta3($sql);
       if (!isset($ulsesionf[0]["ult"])) {
         $array_formapago=array();
@@ -1921,7 +1944,8 @@ public function ws_informacion_caja()
       }else{
 
 
-        $estado_sesionf = $this->db->query("select * from sesion_caja where id_sesion_caja=".$ulsesionf[0]["ult"]." and sesion_caja.id_empleado = ".$data_token["empleado_id"])->result_array();
+        $estado_sesionf = $this->db->query("select * from sesion_caja where id_sesion_caja=".$ulsesionf[0]["ult"]." 
+        /* and sesion_caja.id_empleado = ".$data_token["empleado_id"]."*/ ")->result_array();
         $fecha = explode(' ', $estado_sesionf[0]["ses_fechaapertura"]);
         $fecha_dia=$fecha[0];
         if ($estado_sesionf[0]["ses_estado"]==0){   
@@ -1930,14 +1954,18 @@ public function ws_informacion_caja()
           if($fecha[0]==date('Y-m-d')){
             $estado_caja = 3;
           }else{
-            $estadosesion = $this->db->query("select * from sesion_caja where id_sesion_caja=".$ulsesionf[0]['ult']." and sesion_caja.id_empleado = ".$data_token["empleado_id"])->result_array();
+            $estadosesion = $this->db->query("select * from sesion_caja where id_sesion_caja=".$ulsesionf[0]['ult']." /* and sesion_caja.id_empleado = ".$data_token["empleado_id"]. "*/")->result_array();
             $fecha = explode(' ', $estadosesion[0]["ses_fechaapertura"]);
             $estado_caja = 3;
           }
         }
-        $estadoactual = $this->Mantenimiento_m->consulta3("SELECT sesion_caja.ses_estado FROM sesion_caja INNER JOIN sede_caja ON sesion_caja.id_sede_caja = sede_caja.id_sede_caja WHERE DATE(sesion_caja.ses_fechaapertura) = '".$fecha[0]."' and sede_caja.id_sede=".$id_sede." and sesion_caja.id_empleado = ".$data_token["empleado_id"]." ORDER BY sesion_caja.id_sesion_caja DESC LIMIT 1");
+        $estadoactual = $this->Mantenimiento_m->consulta3("SELECT sesion_caja.ses_estado FROM sesion_caja INNER JOIN sede_caja ON sesion_caja.id_sede_caja = sede_caja.id_sede_caja 
+        WHERE DATE(sesion_caja.ses_fechaapertura) = '".$fecha[0]."' and sede_caja.id_sede=".$id_sede." /* and sesion_caja.id_empleado = ".$data_token["empleado_id"]." */
+        ORDER BY sesion_caja.id_sesion_caja DESC LIMIT 1");
         $estadoactual = $estadoactual[0]["ses_estado"];
-        $idsesion = $this->Mantenimiento_m->consulta3("SELECT sesion_caja.id_sesion_caja FROM sesion_caja INNER JOIN sede_caja ON sesion_caja.id_sede_caja = sede_caja.id_sede_caja WHERE sesion_caja.ses_estado =".$estadoactual." and sesion_caja.id_empleado = ".$data_token["empleado_id"]." and sede_caja.id_sede=".$id_sede." and DATE(sesion_caja.ses_fechaapertura) = '".$fecha[0]."' ORDER BY sesion_caja.id_sesion_caja DESC LIMIT 2");
+        $idsesion = $this->Mantenimiento_m->consulta3("SELECT sesion_caja.id_sesion_caja FROM sesion_caja INNER JOIN sede_caja ON sesion_caja.id_sede_caja = sede_caja.id_sede_caja 
+        WHERE sesion_caja.ses_estado =".$estadoactual." /* and sesion_caja.id_empleado = ".$data_token["empleado_id"]."  */ and sede_caja.id_sede=".$id_sede." 
+        and DATE(sesion_caja.ses_fechaapertura) = '".$fecha[0]."' ORDER BY sesion_caja.id_sesion_caja DESC LIMIT 2");
         if (isset($idsesion[0]["id_sesion_caja"])) {
           $caja1 =  $idsesion[0]["id_sesion_caja"];
           $caja2 = $idsesion[1]["id_sesion_caja"];
@@ -3335,16 +3363,42 @@ ORDER BY fecha_vencimiento DESC
     echo json_encode($response);exit();
 
   }
- public function cargar_cliente_uno()
+  
+  public function cargar_cliente_uno()
   {
- $data_token = json_decode($this->consultar_token(),true);
-      $response=array();
+      $data_token = json_decode($this->consultar_token(), true);
+      $response = array();
       $postdata = file_get_contents("php://input");
-      $request = json_decode($postdata,true); 
-
-      $dat=$this->db->query("select clientes.cliente_id as 'id',clientes. * from clientes where cliente_id=".$request["id"])->row_array();
-
-    echo json_encode($dat);
+      $request = json_decode($postdata, true); 
+  
+      if (isset($request['id'])) {
+          // Consulta por ID
+          $dat = $this->db->query("SELECT clientes.cliente_id as 'id',clientes. * 
+                                   FROM clientes 
+                                   WHERE cliente_id = ?", [$request['id']])->row_array();
+      } elseif (isset($request['dni'])) {
+          // Consulta por DNI
+          $dat = $this->db->query("SELECT clientes.cliente_id as 'id', clientes.* 
+                                   FROM clientes 
+                                   WHERE cliente_dni = ?", [$request['dni']])->row_array();
+      } else {
+          // Si no se proporciona ni id ni dni, retornar error
+          echo json_encode([
+              'estado' => 'error',
+              'mensaje' => 'Debe proporcionar un ID o un DNI para realizar la consulta.'
+          ]);
+          return;
+      }
+  
+      // Retornar los datos obtenidos o un mensaje si no se encuentra
+      if ($dat) {
+          echo json_encode($dat);
+      } else {
+          echo json_encode([
+              'estado' => 'error',
+              'mensaje' => 'Cliente no encontrado.'
+          ]);
+      }
   }
 
   public function eliminar_cliente() {
