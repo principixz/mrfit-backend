@@ -1008,8 +1008,7 @@ class Membresias extends BaseController {
             //->where('membresia_fecha_fin >=', $fechaActual) // Fecha de fin debe ser mayor o igual a la actual
             ->order_by('membresia_fecha_fin', 'DESC') // Ordenar por fecha de fin en orden descendente
             ->get()
-            ->result();
-    
+            ->result(); 
 
             $fechaVencimiento = null;
             $membresia_id = null;
@@ -1033,9 +1032,9 @@ class Membresias extends BaseController {
                 } elseif ($fechaInicioObj > $fechaActualObj) {
                     // Membresía futura
                     $membresiaFutura = $membresia;
-                    break;
+                    //break;
                 }
-            }
+            } 
             if ($membresiaActiva) {
                 $membresias = $membresiaActiva; 
                 $fechaVencimiento = $membresias->membresia_fecha_fin;
