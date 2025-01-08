@@ -1464,7 +1464,7 @@ public function generar_movimiento_nuevo(
           AND sede_caja.id_sede = '" . $infortoken["empresa_sede"] . "' 
           AND sede_caja.id_caja = $id_caja 
           AND DATE(sesion_caja.ses_fechaapertura) = '" . date('Y-m-d') . "'
-          /* AND sesion_caja.id_empleado = " . $infortoken['empleado_id'] . " */
+          AND sesion_caja.id_empleado = " . $infortoken['empleado_id'] . "
           AND sesion_caja.ses_estado = 1");
 
       if ($tipomovimiento == 2) {
@@ -1580,7 +1580,11 @@ public function procesar_venta_pago()
     $nombreMembresia = $servicio['nombreServicio'];
     $costoMembresia = $servicio['precioServicio'];
     $cantidadMeses = $servicio['cantidad'];
-    $fechaInicio = $servicio['fechaInicio'];
+    if (array_key_exists('fechaInicio', $servicio)) {
+      $fechaInicio = $servicio['fechaInicio'];
+    } else {
+      $fechaInicio = null;
+    }
 
     $idsede = $data_token["empresa_sede"];
     $id_caja = 0;
@@ -1735,10 +1739,41 @@ public function procesar_venta_pago()
     echo json_encode($response);
     exit();
 }
-
+private function obtener_fechafin($cliente_id){
+  $sqlPagos ="select * from formapago where for_estado=1 "; 
+  $sqlVencimiento = "SELECT 
+      CASE 
+          WHEN clientes.cliente_estado_fechavencimiento = 1 THEN clientes.fechaFinMembresia
+          ELSE (
+              SELECT membresia.membresia_fecha_fin 
+              FROM membresia 
+              WHERE membresia.cliente_id = clientes.cliente_id 
+              ORDER BY membresia.membresia_fecha_fin DESC 
+              LIMIT 1
+          )
+      END AS fecha_vencimiento
+  FROM 
+      clientes
+  WHERE 
+      clientes.cliente_id = ? 
+      AND clientes.estado = '1' 
+      AND clientes.cliente_nombres IS NOT NULL
+  LIMIT 1;";
+  $query = $this->db->query($sqlVencimiento, array($cliente_id));
+  if ($query->num_rows() > 0) {
+      $result = $query->row();
+      $fechaVencimiento = $result->fecha_vencimiento;
+      $fecha = new DateTime($fechaVencimiento);
+      $fecha->modify('+0 day');
+      $fechaVencimiento = $fecha->format('Y-m-d');
+  } else {
+      $fechaVencimiento = date('Y-m-d'); // Cliente no encontrado o sin fecha de vencimiento
+  }
+  return $fechaVencimiento;
+}
 private function insertar_membresia($pedidoServicio, $idTipoMembresia, $cantidadMeses, $costoMembresia, $idventa, $fechaInicio, $empleado_id) {
   $this->db->trans_begin(); // Iniciar transacción
-
+  $fechaInicioFlag = $fechaInicio;
   try {
       foreach ($pedidoServicio as $cliente) {
           // Verificar si el cliente existe
@@ -1750,17 +1785,19 @@ private function insertar_membresia($pedidoServicio, $idTipoMembresia, $cantidad
                   'mensaje' => "El cliente con ID {$cliente['id']} no existe."
               ];
           }
-
+          if ($fechaInicioFlag == null) {
+            $fechaInicio = $this->obtener_fechafin($cliente['id']);
+          }
           // Verificar conflictos de fechas con membresías existentes
           $conflictos = $this->db->select('*')
-              ->from('membresia')
-              ->where('cliente_id', $cliente['id'])
-              ->group_start()
-              ->where("'{$fechaInicio}' BETWEEN membresia_fecha_inicio AND membresia_fecha_fin")
-              ->or_where("'{$fechaInicio}' < membresia_fecha_fin")
-              ->group_end()
-              ->get()
-              ->result();
+          ->from('membresia')
+          ->where('cliente_id', $cliente['id'])
+          ->group_start()
+          ->where("'{$fechaInicio}' >= membresia_fecha_inicio") // La fechaInicio debe ser mayor al inicio del rango
+          ->where("'{$fechaInicio}' < membresia_fecha_fin") // La fechaInicio debe ser menor o igual al último día del rango
+          ->group_end()
+          ->get()
+          ->result();
 
           if (!empty($conflictos)) {
               $ultimaFechaFinExistente = $conflictos[0]->membresia_fecha_fin;
@@ -1879,10 +1916,10 @@ public function ws_informacion_caja(){
     $response=array();
     $post=file_get_contents("php://input");  
     $request=json_decode($post, true); 
-    if ($data_token["empleado_perfil"] == 105 && $data_token["empleado_perfil"] == 108) { 
+    if ($data_token["empleado_perfil"] != 5 && $data_token["empleado_perfil"] != 8) { 
       $this->consultar_saldo_caja(3,$data_token);
     }else{
-      //if ($data_token["empleado_perfil"] != 5) { 
+      if ($data_token["empleado_perfil"] == 5) { 
         $estadosesioncaja = $this->Mantenimiento_m->consulta3("SELECT sesion_caja.id_empleado FROM sesion_caja,sede_caja WHERE sesion_caja.id_sede_caja = sede_caja.id_sede_caja and sesion_caja.ses_estado = 1 AND sede_caja.id_sede = ".$data_token["empresa_sede"]." GROUP BY sesion_caja.id_empleado");
         if (isset($estadosesioncaja[0]["id_empleado"])) {
           if ($data_token["empleado_id"] == $estadosesioncaja[0]["id_empleado"]) {
@@ -1894,9 +1931,9 @@ public function ws_informacion_caja(){
         }else{
           $this->consultar_saldo_caja(0,$data_token);
         }
-      //}else{
+      }else{
         //$this->consultar_caja_sedes(); no incluye
-      //}     
+      }     
     }
   }
 
@@ -1910,7 +1947,7 @@ public function ws_informacion_caja(){
       $fecha_dia =date("Y-m-d");
       $sql="SELECT MAX(sesion_caja.id_sesion_caja) as ult FROM sede_caja,sesion_caja where sede_caja.id_sede_caja=sesion_caja.id_sede_caja and
       sede_caja.id_caja=1 and sede_caja.id_sede=".$id_sede." 
-      /* and sesion_caja.id_empleado = ".$data_token["empleado_id"]." */ ";
+      and sesion_caja.id_empleado = ".$data_token["empleado_id"]." ";
       $ulsesionf=$this->Mantenimiento_m->consulta3($sql);
       if (!isset($ulsesionf[0]["ult"])) {
         $array_formapago=array();
@@ -1945,7 +1982,7 @@ public function ws_informacion_caja(){
 
 
         $estado_sesionf = $this->db->query("select * from sesion_caja where id_sesion_caja=".$ulsesionf[0]["ult"]." 
-        /* and sesion_caja.id_empleado = ".$data_token["empleado_id"]."*/ ")->result_array();
+        and sesion_caja.id_empleado = ".$data_token["empleado_id"]." ")->result_array();
         $fecha = explode(' ', $estado_sesionf[0]["ses_fechaapertura"]);
         $fecha_dia=$fecha[0];
         if ($estado_sesionf[0]["ses_estado"]==0){   
@@ -1954,17 +1991,17 @@ public function ws_informacion_caja(){
           if($fecha[0]==date('Y-m-d')){
             $estado_caja = 3;
           }else{
-            $estadosesion = $this->db->query("select * from sesion_caja where id_sesion_caja=".$ulsesionf[0]['ult']." /* and sesion_caja.id_empleado = ".$data_token["empleado_id"]. "*/")->result_array();
+            $estadosesion = $this->db->query("select * from sesion_caja where id_sesion_caja=".$ulsesionf[0]['ult']." and sesion_caja.id_empleado = ".$data_token["empleado_id"]. " ")->result_array();
             $fecha = explode(' ', $estadosesion[0]["ses_fechaapertura"]);
             $estado_caja = 3;
           }
         }
         $estadoactual = $this->Mantenimiento_m->consulta3("SELECT sesion_caja.ses_estado FROM sesion_caja INNER JOIN sede_caja ON sesion_caja.id_sede_caja = sede_caja.id_sede_caja 
-        WHERE DATE(sesion_caja.ses_fechaapertura) = '".$fecha[0]."' and sede_caja.id_sede=".$id_sede." /* and sesion_caja.id_empleado = ".$data_token["empleado_id"]." */
+        WHERE DATE(sesion_caja.ses_fechaapertura) = '".$fecha[0]."' and sede_caja.id_sede=".$id_sede."  and sesion_caja.id_empleado = ".$data_token["empleado_id"]." 
         ORDER BY sesion_caja.id_sesion_caja DESC LIMIT 1");
         $estadoactual = $estadoactual[0]["ses_estado"];
         $idsesion = $this->Mantenimiento_m->consulta3("SELECT sesion_caja.id_sesion_caja FROM sesion_caja INNER JOIN sede_caja ON sesion_caja.id_sede_caja = sede_caja.id_sede_caja 
-        WHERE sesion_caja.ses_estado =".$estadoactual." /* and sesion_caja.id_empleado = ".$data_token["empleado_id"]."  */ and sede_caja.id_sede=".$id_sede." 
+        WHERE sesion_caja.ses_estado =".$estadoactual."  and sesion_caja.id_empleado = ".$data_token["empleado_id"]."   and sede_caja.id_sede=".$id_sede." 
         and DATE(sesion_caja.ses_fechaapertura) = '".$fecha[0]."' ORDER BY sesion_caja.id_sesion_caja DESC LIMIT 2");
         if (isset($idsesion[0]["id_sesion_caja"])) {
           $caja1 =  $idsesion[0]["id_sesion_caja"];
