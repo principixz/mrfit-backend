@@ -36,15 +36,15 @@ $ruta = $empresa["empresa_link_facturacion"].'api/documents';
 //produccion
 $token = $empresa["empresa_token_facturacion"];
 //prueba
-//$token='8lqV6Y8G0eSwG5G0hgthgB8CD1g4N2W5xdVYUoWodrqreh82z9';
+//$token='8qn5JHCUSsWkm2Q7hemQ57HNCDV0t4n0PE8iSIvT5cBuLfphmC';
 
 
-   $sql="SELECT
+$sql="SELECT
 venta.venta_idventas as 'id',
 venta.venta_num_serie  as 'serie',
 venta.venta_num_documento as 'documento',
-DATE_FORMAT(venta.venta_fecha_pago,'%Y-%m-%d') as 'fecha',
-TIME(venta.venta_fecha_pago) as 'hora',
+DATE_FORMAT(venta.venta_pedidofecha,'%Y-%m-%d') as 'fecha',
+TIME(venta.venta_pedidofecha) as 'hora',
 if(ventas_idtipodocumento=1,'01','03') as 'codigo_documento',
 venta.venta_documento_descripcion as 'documento_dni',
 if(LENGTH(venta.venta_documento_descripcion)=8,'1','6') as 'tam_dni',
@@ -60,40 +60,21 @@ empleados.*
 FROM
 venta
 LEFT JOIN clientes ON venta.venta_codigocliente = clientes.cliente_id
-INNER JOIN empleados ON empleados.empleado_id=venta.venta_id_cajero
-where venta.venta_idventas=".$id;
-
-
-
-        $venta=$this->db->query($sql)->row_array();
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+INNER JOIN empleados ON empleados.empleado_id=venta.venta_codigomozo
+where venta.venta_idventas=".$id; 
+$venta=$this->db->query($sql)->row_array();
 
 
         $detalle=array();
 
-        $sql="select 
-producto.producto_descripcion as 'descrip',
-detalle_venta.*
-
-
-from detalle_venta 
-INNER JOIN producto ON detalle_venta.cod_producto_venta=producto.producto_id
-where detalle_venta.estado_pedido=1 and id_venta=".$id;
-
+        $sql="SELECT 
+tm.tipo_membresia_descripcion as descrip,
+m.membresia_id as id_detalle_venta,
+m.membresia_meses as cantidad,
+m.membresia_precio_mes as precio
+FROM membresia m
+INNER JOIN tipo_membresia as tm ON m.tipo_membresia_id = tm.tipo_membresia_id 
+WHERE m.membresia_idventa = ".$id; 
         $rec=$this->db->query($sql)->result_array();
 
         foreach ($rec as $key => $value) {
@@ -136,11 +117,10 @@ where detalle_venta.estado_pedido=1 and id_venta=".$id;
 
 
 
-    
-
+     
 $data = array(
 
-   "serie_documento"=> $venta["serie"],
+  "serie_documento"=> $venta["serie"],
 
   "numero_documento"=>$venta["documento"],
 
@@ -230,11 +210,7 @@ $data = array(
 
 //print_r($data);exit();
 
-$data_json = json_encode($data);
-
-
-
-//echo $data_json;exit();
+$data_json = json_encode($data); 
 
 $curl = curl_init();
 
@@ -292,7 +268,7 @@ if ($err) {
 
    $json=json_decode($response,true);
 
-  //print_r($json);exit();
+  //print_r($json);
 
 
 

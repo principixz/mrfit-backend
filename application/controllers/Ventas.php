@@ -1676,10 +1676,19 @@ if($cont==0){
 
 	public function mostrar_comprobante($id){
 		$empresa=$this->Mantenimiento_m->consulta3("select * from empresa");
-		$venta=$this->Mantenimiento_m->consulta3("SELECT * from mesa,venta,formapago  where venta.venta_formapago=formapago.for_id and mesa.mesa_id=venta.venta_codigomesa and venta.venta_idventas=".$id);
-		$detalle_venta=$this->Mantenimiento_m->consulta3("SELECT * FROM detalle_venta
-			INNER JOIN producto ON detalle_venta.cod_producto_venta = producto.producto_id
-			where detalle_venta.estado_pedido=1 and detalle_venta.id_venta=".$id);
+		$venta=$this->Mantenimiento_m->consulta3("
+		SELECT * 
+		from 
+		membresia,
+		venta,formapago  
+		where venta.venta_formapago=formapago.for_id and membresia.membresia_idventa=venta.venta_idventas and venta.venta_idventas=".$id);
+		$detalle_venta=$this->Mantenimiento_m->consulta3("SELECT *,
+		m.membresia_meses as cantidad, m.membresia_precio_mes as precio,
+		m.membresia_precio_mes as producto_precio,
+		m.membresia_precio_mes as venta_monto_sinigv,
+		tm.tipo_membresia_descripcion as producto_descripcion, '1' as venta_estado_consumo FROM  membresia m
+			INNER JOIN tipo_membresia as tm ON m.tipo_membresia_id = tm.tipo_membresia_id
+			where m.membresia_idventa =".$id);
 		$total=0;
 		foreach ($detalle_venta as $key => $val) {
 			$total+=(float)$val["cantidad"]*$val["producto_precio"];
@@ -1689,10 +1698,10 @@ if($cont==0){
 		$fl=$total-$dat;
 		$flotante=(string)(round($fl*100));
 
-		$vendedor=$this->Mantenimiento_m->consulta3("select * from venta,empleados where venta.venta_credito_usuario=empleados.empleado_id and venta.venta_idventas=".$id);
+		$vendedor=$this->Mantenimiento_m->consulta3("select * from venta,empleados where venta.venta_codigomozo=empleados.empleado_id and venta.venta_idventas=  ".$id);
 
 		$cliente=$this->Mantenimiento_m->consulta3("select * from venta,clientes where venta.venta_codigocliente=clientes.cliente_id and venta.venta_idventas=".$id);
-		$sede=$this->Mantenimiento_m->consulta3("select * from sede where id_sede=".$_COOKIE["id_sede"]);
+		$sede=$this->Mantenimiento_m->consulta3("select * from sede where id_sede=1");
 		$estado_mesa="";
 
 

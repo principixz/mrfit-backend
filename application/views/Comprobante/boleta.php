@@ -195,11 +195,11 @@ body { print-color-adjust: exact; }
     <div id="cabecera" style="border-bottom:1px solid #000;text-decoration: none;">
         <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</p>
     </div>
-    <br/>
+    <br/> 
     <div id="totales" style="margin-right: 3px;">
-        <p style="float:left;width: 65%;">SUB TOTAL</p>
+        <p style="float:left;width: 65%;">SUB TOTALxxx</p>
         <p style="float:left;width: 11%;">&nbsp;&nbsp;S/&nbsp;</p>
-        <p style="float:left;width: 20%;"><?php echo number_format($venta[0]["venta_monto_sinigv"], 2, ',', ' '); ?></p>
+        <p style="float:left;width: 20%;"><?php echo number_format($total_venta, 2, ',', ' '); ?></p>
         <p style="clear: both"></p>
         <p style="float:left;width: 65%;">DESCUENTO</p>
         <p style="float:left;width: 11%;">&nbsp;&nbsp;S/&nbsp;</p>
@@ -207,7 +207,7 @@ body { print-color-adjust: exact; }
         <p style="clear: both"></p>
         <p style="float:left;width: 65%;">IGV </p>
         <p style="float:left;width: 11%;">&nbsp;&nbsp;S/&nbsp;</p>
-        <p style="float:left;width: 20%;"><?php echo number_format($venta[0]["venta_igv_monto"], 2, ',', ' '); ?></p>
+        <p style="float:left;width: 20%;"><?php echo number_format(0, 2, ',', ' '); ?></p>
         <p style="clear: both"></p>
         <p style="float:left;width: 65%;">**** TOTAL</p>
         <p style="float:left;width: 11%;">&nbsp;&nbsp;S/&nbsp;</p>
@@ -253,7 +253,7 @@ if($tam==1){
     <div  id="datos">
         <?php
            $fecha_pedido = explode(" ", $venta[0]["venta_pedidofecha"]);
-           $fecha_venta = explode(" ", $venta[0]["venta_fecha_pago"]);
+           $fecha_venta = explode(" ", $venta[0]["venta_pedidofecha"]);
 
              $fecha2 = date_create($fecha_venta[0]);
 
@@ -269,32 +269,7 @@ if($tam==1){
 
 
 
-        <?php
-        $nombre="";
-
-              $nombre=$venta[0]["mesa_numero"];
-           if($venta[0]["mesa_id"]!="1"){
-                  $te="";
-              if($venta[0]["mesa_tipo"]=="0") {$te="MESA ";}
-              else{ $te="LLEVAR ";}
-               
-             
-         ?>
-        <P>&nbsp;&nbsp;MESA:  <?php echo $te." ".$nombre; ?></p>
-
-             <?php }else{ ?>
-  <P>&nbsp;&nbsp;MESA: DELIVERY</p>
-
-             <?php } ?>
-
-<?php if(count($delivery)>0){?>
-
-
-<p>&nbsp;&nbsp;NOMBRE DELIVERY:<?php echo $delivery[0]["nombre"]; ?></p>
-<p>&nbsp;&nbsp;CELULAR DELIVERY:<?php echo $delivery[0]["numero_celular"]; ?></p>
-<p>&nbsp;&nbsp;DIRECCIÓN DELIVERY:<?php echo $delivery[0]["direccion"]; ?></p>
-
-<?php } ?>
+         
 
 
 

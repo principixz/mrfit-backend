@@ -1550,6 +1550,7 @@ public function procesar_venta_pago()
     $request = json_decode($post, true);
     $idventa = 0;
     $idempleado = $data_token["empleado_id"];
+    $ventas_pago=array();
     if (!isset($request['listaServicios'][0])) {
         $response = [
             'estado' => false,
@@ -1561,6 +1562,7 @@ public function procesar_venta_pago()
 
     // Validar los campos requeridos en el primer servicio
     $servicio = $request['listaServicios'][0];
+    $ventas_pago = $request['pago'];
     if (
         !isset($servicio['id']) || 
         !isset($servicio['nombreServicio']) || 
@@ -1637,7 +1639,21 @@ public function procesar_venta_pago()
         $total_pagar += (float)$costoMembresia;
         $total_pagar += (float)$pago["delivery"];
 
-        $calcular_pago_caja = $this->crear_pagos_movimiento($pago, $total_pagar);
+        $cliente_pago = explode("/", $pago['cliente']);
+        $numero_cliente = $cliente_pago[1];
+        $nombre_cliente = $cliente_pago[2]; 
+
+        $calcular_pago_caja = $this->crear_pagos_movimiento($pago, $total_pagar); 
+        $id_tipo_comprobante=$pago["tipo_comprobante"];
+        if ($id_tipo_comprobante == 1) {
+          $td = 'BVE';
+        }else{
+          if ($id_tipo_comprobante == 2) {
+            $td = 'BFE';
+          }else{
+            $td = 'SVE';
+          }
+        }
 
         $concepto = 1;
         $descripcion = "COBRO DE VENTA DE PRODUCTOS";
@@ -1661,22 +1677,30 @@ public function procesar_venta_pago()
                 $descripcion_comprobante
             );
         }
-
+        $id_movimiento = end($lista_movimiento_id);
+        
         if (array_sum($lista_movimiento_id) == 0) {
             throw new Exception("Por favor verifica si tiene la caja abierta o permisos para esta operación.");
         }
-        // Generar correlativos
-        $dat = $this->Mantenimiento_m->consulta3("SELECT * FROM detalle_doc_sede 
-            INNER JOIN documento ON detalle_doc_sede.detalle_id_documento = documento.id_documento
-            INNER JOIN tipo_documento ON documento.id_tipodocumento = tipo_documento.tipodoc_id 
-            WHERE detalle_doc_sede.detalle_id_sede=" . $data_token["empresa_sede"] . " 
-            AND documento.id_tipodocumento=" . $id_tipo_comprobante);
 
-        $descripcion_comprobante = $dat[0]["doc_serie"] . "-" . $dat[0]["doc_correlativo"];
-        $serie = $dat[0]["doc_serie"];
-        $correlativo = $dat[0]["doc_correlativo"];
-        $id_documento = $dat[0]["id_documento"];
-        $nuevo_correlativo = (int)$correlativo + 1;
+        if($id_tipo_comprobante!=0){
+          $dat=$this->Mantenimiento_m->consulta3("SELECT * FROM detalle_doc_sede INNER JOIN documento ON detalle_doc_sede.detalle_id_documento = documento.id_documento
+            INNER JOIN tipo_documento ON documento.id_tipodocumento = tipo_documento.tipodoc_id where documento.id_tipodocumento=".$pago["tipo_comprobante"]);
+          $descripcion_comprobante=$dat[0]["doc_serie"]."-".$dat[0]["doc_correlativo"];
+          $serie=$dat[0]["doc_serie"];
+          $correlativo=$dat[0]["doc_correlativo"];
+          $id_documento=$dat[0]["id_documento"];
+          $nuevo_correlativo=(int)$correlativo+1;
+          $datos=array(
+            "doc_correlativo"=>$nuevo_correlativo
+          );
+          $this->Mantenimiento_m->actualizar("documento",$datos,$id_documento,"id_documento");
+          /*$data=array(
+            "tipo_comprobante_descripcion"=>$descripcion_comprobante
+          );
+          $this->db->where('mov_id',$id_movimiento);
+          $estado=$this->db->update('movimiento', $data);*/
+        }
 
         $datos = array("doc_correlativo" => $nuevo_correlativo);
         $this->Mantenimiento_m->actualizar("documento", $datos, $id_documento, "id_documento");
@@ -1695,7 +1719,9 @@ public function procesar_venta_pago()
             "venta_estado_pagado" => 1,
             "venta_monto_entregado" => $dinero_entrego,
             "venta_glosario" => $nombreMembresia,
-            "venta_codigomozo" => $idempleado
+            "venta_codigomozo" => $idempleado,
+            "venta_documento_descripcion" => $numero_cliente,
+            "venta_nombre_descripcion" => $nombre_cliente
         );
         if (!$this->db->insert('venta', $data)) {
             throw new Exception("Error al insertar venta");
@@ -1724,7 +1750,9 @@ public function procesar_venta_pago()
         if (!$result_membresia['estado']) {
             throw new Exception($result_membresia['mensaje']);
         }
-
+        if((int)$id_tipo_comprobante!=6){
+          $this->facturacion_electronica($id_venta);
+        }
         $this->db->trans_commit(); // Comentar temporalmente
         $response["estado"] = true;
         $response["mensaje"] = "Se procesó correctamente";
