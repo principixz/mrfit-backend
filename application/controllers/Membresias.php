@@ -1870,7 +1870,7 @@ class Membresias extends BaseController {
         m.membresia_fecha_fin AS fechaFin,
         v.venta_pedidofecha AS fechaVenta, -- Fecha de venta desde la tabla 'venta'
         GROUP_CONCAT(DISTINCT mo.mov_descripcion SEPARATOR ', ') AS glosario, -- Glosario desde la tabla 'movimiento'
-        SUM(mo.mov_monto) AS importe, -- Importe desde la tabla 'movimiento'
+        SUM(DISTINCT mo.mov_monto) AS importe, -- Importe desde la tabla 'movimiento'
         e.empleado_nombres AS colaborador, -- Nombre del colaborador desde la tabla 'empleados'
         c.cliente_tipomembresia AS tipoMembresiaId,
         tm.tipo_membresia_descripcion AS descripcionMembresia,
