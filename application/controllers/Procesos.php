@@ -148,11 +148,6 @@ public function verificar_envio_boleta()
 
 
  $ruta = 'https://factura.selvafood.com/api/summaries';
-	//	$token = 'S5ihugP7qVC8f6mCP2Abc3d4CmEAA9MCheQ5ivvfwET06bQql4';
-
-
-		//produccion
-		
 		$token = '8qn5JHCUSsWkm2Q7hemQ57HNCDV0t4n0PE8iSIvT5cBuLfphmC';
 
 		$sql="SELECT DISTINCT(venta.venta_resumen_external_id) ,
@@ -172,7 +167,7 @@ ventas_idtipodocumento=2";
            {
 
 			 $request=array();
-             $ruta = 'https://factura.selvafood.com/api/summaries';
+             $ruta = 'https://factura.selvafood.com/api/summaries/status';
 		   	
 		   	  $request["external_id"]=$external_id;
 		   	  $request["ticket"]=$ticket;
