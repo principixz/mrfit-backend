@@ -153,7 +153,7 @@ public function verificar_envio_boleta()
 
 		//produccion
 		
-		$token = 'tIOGH9ZZZCBmuj8ACresvSJxkzmADY7JZ3wySgF3rkXqFBIyZJ';
+		$token = '8qn5JHCUSsWkm2Q7hemQ57HNCDV0t4n0PE8iSIvT5cBuLfphmC';
 
 		$sql="SELECT DISTINCT(venta.venta_resumen_external_id) ,
 					venta.venta_resumen_ticket
@@ -172,7 +172,7 @@ ventas_idtipodocumento=2";
            {
 
 			 $request=array();
-		   	  $ruta = 'http://facturacion.gokiebox.pe/api/summaries/status';
+             $ruta = 'https://factura.selvafood.com/api/summaries';
 		   	
 		   	  $request["external_id"]=$external_id;
 		   	  $request["ticket"]=$ticket;
