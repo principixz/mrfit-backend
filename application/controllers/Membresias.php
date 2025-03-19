@@ -978,7 +978,7 @@ class Membresias extends BaseController {
             if (!isset($request['dni'])) {
                 throw new Exception('El DNI es obligatorio.');
             }
-    
+            $fechaRenovacion = null;
             $dni = $request['dni'];
             $fechaActual = date('Y-m-d');
     
@@ -1005,6 +1005,10 @@ class Membresias extends BaseController {
             if ($cliente->cliente_estado_fechavencimiento == 1) {
                 if (isset($cliente->fechaFinMembresia) && $cliente->fechaFinMembresia >= $fechaActual) {
                     $fechaVencimiento = $cliente->fechaFinMembresia;
+                    $fechaRenovacion = $fechaVencimiento;
+                    $date = new DateTime($fechaVencimiento);
+                    $date->modify('-1 day');
+                    $fechaVencimiento = $date->format('Y-m-d');
                     $cliente_tipomembresia = $cliente->cliente_tipomembresia;
                 } else {
                     // Membresía vencida
@@ -1058,6 +1062,12 @@ class Membresias extends BaseController {
                 if ($membresiaActiva) {
                     $membresias = $membresiaActiva; 
                     $fechaVencimiento = $membresias->membresia_fecha_fin;
+                    $fechaRenovacion = $fechaVencimiento;
+                    $date = new DateTime($fechaVencimiento);
+                    $date->modify('-1 day');
+                    $fechaVencimiento = $date->format('Y-m-d');
+                    
+
                     $membresia_id = $membresias->membresia_id;
                     $membresia_meses = $membresias->membresia_meses;
                     $cliente_tipomembresia = $membresias->tipo_membresia_id;
@@ -1109,24 +1119,27 @@ class Membresias extends BaseController {
                     return;
                 }
             }
-            // Mensaje según estadoTrotadora
-            if ($cliente->estadoTrotadora == 0) {
-                $mensajeTrotadora = "Estimado <strong>{$cliente->cliente_nombres}</strong>, su membresía solo le permite el uso del área de pesas. 🏋️";
-            } else {
-                $mensajeTrotadora = "Estimado <strong>{$cliente->cliente_nombres}</strong>, usted tiene acceso a todos los beneficios de Mr Fit 💪";
-            }
-            $mensajeTrotadora = str_replace('. ', '.<br>', $mensajeTrotadora);
-    
             // Calcular días restantes
             $fechaVencimientoObj = new DateTime($fechaVencimiento);
+            
             $fechaActualObj = new DateTime($fechaActual);
             //$diasRestantes = $fechaActualObj->diff($fechaVencimientoObj)->days;
             $diasRestantes = $this->calcular_dias_restantes($cliente->cliente_id, $membresia_id, $membresia_meses, $cliente_tipomembresia, $fechaVencimiento); 
             //$diasRestantes--;
+            $mensajeTrotadora = '';
+            // Mensaje según estadoTrotadora
+            if( $diasRestantes >= 0){
+                if ($cliente->estadoTrotadora == 0) {
+                    $mensajeTrotadora = "Estimado <strong>{$cliente->cliente_nombres}</strong>, su membresía solo le permite el uso del área de pesas. 🏋️";
+                } else {
+                    $mensajeTrotadora = "Estimado <strong>{$cliente->cliente_nombres}</strong>, usted tiene acceso a todos los beneficios de Mr Fit 💪";
+                }
+                $mensajeTrotadora = str_replace('. ', '.<br>', $mensajeTrotadora);
+            }
 
             #$estadoVencimiento = 0;
             $estadoVencimientoD = 'success';
-            if ($diasRestantes >= 0 && $diasRestantes < 7) {
+            if ($diasRestantes < 7) {
                 #$estadoVencimiento = 2;
                 $estadoVencimientoD = 'error'; // Pocos días restantes
             } else if ($diasRestantes >= 7 && $diasRestantes < 10) {
@@ -1138,7 +1151,7 @@ class Membresias extends BaseController {
             $mensajeAmigable = "Estimado usuario, ";
             if ($fechaVencimiento === $fechaActual || $diasRestantes == 0 ) {
                 if($fechaVencimiento === $fechaActual){
-                $mensajeAmigable .= "su membresía vence <strong>hoy</strong> 🛑 <br>";
+                $mensajeAmigable .= "su ultimo día de membresia es <strong>hoy</strong> 🛑 <br>";
                 }
                 if($diasRestantes == 0 && $cliente_tipomembresia == 23){
                     $mensajeAmigable .= "su membresía <strong>solo le permite ".$diasPermitidos." ingresos</strong> 🛑 <br>";
@@ -1147,10 +1160,13 @@ class Membresias extends BaseController {
                 $mensajeAmigable .= "su membresía está próxima a vencer. Le quedan <strong>{$diasRestantes}</strong> días 🛑.<br>";
             } else if ($diasRestantes > 1 && $diasRestantes < 10) {
                 $mensajeAmigable .= "Le recordamos que su membresía está proximo a expirar. Le quedan <strong>{$diasRestantes}</strong> días 🛑.<br>";
-            } else {
+            } else if ($diasRestantes< 0) {
+                $mensajeAmigable .= "su membresía ya expiro 🛑<br>";
+            }
+            else {
                 $mensajeAmigable .= "su membresía sigue vigente ✅<br>";
             }
-            $mensajeAmigable .= "Su fecha de vencimiento es el <strong>{$fechaVencimiento}</strong>.";
+            $mensajeAmigable .= "Su fecha de renovación es el <strong>{$fechaRenovacion}</strong>.";
             $mensajeAmigable = str_replace('. ', '.<br>', $mensajeAmigable);
     
             // Validar asistencia del día
@@ -1178,8 +1194,8 @@ class Membresias extends BaseController {
                 $this->db->trans_rollback(); 
                 return;
             } 
-            if ($diasRestantes == 0) {
-                $mensaje = "Estimado Usuario, su membresía venció hoy día renueve su membresía y regrese para su control de asistencia. Gracias!</strong> ℹ️";
+            if ($diasRestantes < 0) {
+                $mensaje = "Estimado Usuario, su membresía ha vencido el día <strong>".$fechaRenovacion."</strong> , acerquese a pagar en recepción y regrese para su control de asistencia. Gracias!</strong> ℹ️";
                 $mensaje = str_replace('. ', '.<br>', $mensaje);
                 echo json_encode([
                     'mensaje' => $mensaje,
@@ -1220,7 +1236,9 @@ class Membresias extends BaseController {
                 //$this->db->trans_rollback();
                 $this->db->trans_commit();
             }
-    
+            if($diasRestantes == 0){
+                $diasRestantes = 'Vence Hoy';
+            }
             // Respuesta final exitosa
             $mensaje = "✅ Se registró hoy a las <strong>{$asistenciaData['asistencia_fecha_hora']}</strong> ¡Disfrute su día! 🤗";
             $mensaje = str_replace('. ', '.<br>', $mensaje);
@@ -1252,7 +1270,8 @@ class Membresias extends BaseController {
         $fechaVencimiento = new DateTime($fecha_vencimiento);
         $fechaActual = new DateTime($fechaActual->format('Y-m-d')); 
         // Días hasta la fecha de vencimiento
-        $diasHastaVencimiento = $fechaActual->diff($fechaVencimiento)->days; 
+        $interval = $fechaActual->diff($fechaVencimiento);
+        $diasHastaVencimiento = ($interval->invert ? -$interval->days : $interval->days);
         // Verificar si es membresía interdiaria
         if ($tipo_membresia_id == 23) {
             // Calcular asistencias restantes
