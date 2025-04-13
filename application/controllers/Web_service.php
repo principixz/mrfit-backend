@@ -1751,12 +1751,14 @@ public function procesar_venta_pago()
             throw new Exception($result_membresia['mensaje']);
         }
         if((int)$id_tipo_comprobante!=6){
-          $this->facturacion_electronica($id_venta);
+          $datos_facturacion = $this->facturacion_electronica($id_venta);
+          $response["facturacion"] = $datos_facturacion["data"]["print_ticket"];
         }
         $this->db->trans_commit(); // Comentar temporalmente
         $response["estado"] = true;
         $response["mensaje"] = "Se procesó correctamente";
         $response["idventa"] = $id_venta;
+        
 
     } catch (Exception $e) {
         $this->db->trans_rollback(); // Revertir transacción en caso de error

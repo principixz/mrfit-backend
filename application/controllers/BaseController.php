@@ -20,315 +20,181 @@ public function __construct() {
 
 public function facturacion_electronica($id)
 {
- //  $data_token = json_decode($this->consultar_token(),true);
+    try {
+        $empresa = $this->db->query("select * from empresa")->row_array();
+        $postdata = file_get_contents("php://input");
+        $request = json_decode($postdata, true);
+        $response = [];
 
- // $response=array();
-  $empresa=$this->db->query("select * from empresa")->row_array();
-  $postdata = file_get_contents("php://input");
+        $ruta = $empresa["empresa_link_facturacion"] . 'api/documents';
+        $token = $empresa["empresa_token_facturacion"];
 
-  $request = json_decode($postdata,true); 
+        // Obtener datos de venta
+        $sql = "SELECT venta.venta_idventas as 'id', venta.venta_num_serie as 'serie', venta.venta_num_documento as 'documento',
+            DATE_FORMAT(venta.venta_pedidofecha,'%Y-%m-%d') as 'fecha',
+            TIME(venta.venta_pedidofecha) as 'hora',
+            if(ventas_idtipodocumento=1,'01','03') as 'codigo_documento',
+            venta.venta_documento_descripcion as 'documento_dni',
+            if(LENGTH(venta.venta_documento_descripcion)=8,'1','6') as 'tam_dni',
+            venta.venta_direccion_descripcion as 'direccion',
+            clientes.cliente_telefono as 'telefono',
+            venta.venta_nombre_descripcion as 'cliente',
+            clientes.cliente_email as 'correo',
+            if(venta.venta_cdr_facturacion IS NULL ,'',venta.venta_cdr_facturacion) as 'cdr',
+            if(venta.venta_xml_facturacion IS NULL ,'',venta.venta_xml_facturacion) as  'xml',
+            if(venta.venta_pdf_facturacion IS NULL ,'',venta.venta_pdf_facturacion) as 'pdf',
+            venta.*, empleados.*
+            FROM venta
+            LEFT JOIN clientes ON venta.venta_codigocliente = clientes.cliente_id
+            INNER JOIN empleados ON empleados.empleado_id=venta.venta_codigomozo
+            WHERE venta.venta_idventas=" . (int)$id;
+        $venta = $this->db->query($sql)->row_array();
 
-  $response=array();
-
-
-
-$ruta = $empresa["empresa_link_facturacion"].'api/documents';
-//produccion
-$token = $empresa["empresa_token_facturacion"];
-//prueba
-//$token='8qn5JHCUSsWkm2Q7hemQ57HNCDV0t4n0PE8iSIvT5cBuLfphmC';
-
-
-$sql="SELECT
-venta.venta_idventas as 'id',
-venta.venta_num_serie  as 'serie',
-venta.venta_num_documento as 'documento',
-DATE_FORMAT(venta.venta_pedidofecha,'%Y-%m-%d') as 'fecha',
-TIME(venta.venta_pedidofecha) as 'hora',
-if(ventas_idtipodocumento=1,'01','03') as 'codigo_documento',
-venta.venta_documento_descripcion as 'documento_dni',
-if(LENGTH(venta.venta_documento_descripcion)=8,'1','6') as 'tam_dni',
-venta.venta_direccion_descripcion as 'direccion',
-clientes.cliente_telefono as 'telefono',
-venta.venta_nombre_descripcion as 'cliente',
-clientes.cliente_email as 'correo',
-if(venta.venta_cdr_facturacion IS NULL ,'',venta.venta_cdr_facturacion) as 'cdr',
-if(venta.venta_xml_facturacion IS NULL ,'',venta.venta_xml_facturacion) as  'xml',
-if(venta.venta_pdf_facturacion IS NULL ,'',venta.venta_pdf_facturacion) as 'pdf',
-venta.*,
-empleados.*
-FROM
-venta
-LEFT JOIN clientes ON venta.venta_codigocliente = clientes.cliente_id
-INNER JOIN empleados ON empleados.empleado_id=venta.venta_codigomozo
-where venta.venta_idventas=".$id; 
-$venta=$this->db->query($sql)->row_array();
-
-
-        $detalle=array();
-
-        $sql="SELECT 
-tm.tipo_membresia_descripcion as descrip,
-m.membresia_id as id_detalle_venta,
-m.membresia_meses as cantidad,
-m.membresia_precio_mes as precio
-FROM membresia m
-INNER JOIN tipo_membresia as tm ON m.tipo_membresia_id = tm.tipo_membresia_id 
-WHERE m.membresia_idventa = ".$id; 
-        $rec=$this->db->query($sql)->result_array();
+        // Detalle
+        $detalle = [];
+        $sql = "SELECT tm.tipo_membresia_descripcion as descrip,
+                m.tipo_membresia_id as codigoproducto,
+                m.membresia_id as id_detalle_venta,
+                m.membresia_meses as cantidad,
+                m.membresia_precio_mes as precio
+                FROM membresia m
+                INNER JOIN tipo_membresia as tm ON m.tipo_membresia_id = tm.tipo_membresia_id 
+                WHERE m.membresia_idventa = " . (int)$id;
+        $rec = $this->db->query($sql)->result_array();
 
         foreach ($rec as $key => $value) {
-
-           $detalle[$key]=array(
-
-              "codigo_interno"=>  "P".$value["id_detalle_venta"],
-
-              "descripcion"=> $value["descrip"],
-
-              "codigo_producto_sunat"=>  "51121703",
-
-              "unidad_de_medida"=>  "NIU",
-
-              "cantidad"=>  $value["cantidad"],
-
-              "valor_unitario"=>  $value["precio"],
-
-              "codigo_tipo_precio"=>  "01",
-
-              "precio_unitario"=>  $value["precio"],
-
-              "codigo_tipo_afectacion_igv"=> "20",
-
-              "total_base_igv"=>  (double)$value["cantidad"]*(double)$value["precio"],
-
-              "porcentaje_igv"=>  18,
-
-              "total_igv"=>  0,
-
-              "total_impuestos"=>  0,
-
-              "total_valor_item"=>  $value["cantidad"]*$value["precio"],
-
-              "total_item"=>  $value["cantidad"]*$value["precio"],
-
-           );
-
+            $detalle[$key] = [
+                "codigo_interno" => "S" . $value["codigoproducto"],
+                "descripcion" => $value["descrip"],
+                "codigo_producto_sunat" => "51121703",
+                "unidad_de_medida" => "ZZ",
+                "cantidad" => $value["cantidad"],
+                "valor_unitario" => $value["precio"],
+                "codigo_tipo_precio" => "01",
+                "precio_unitario" => $value["precio"],
+                "codigo_tipo_afectacion_igv" => "20",
+                "total_base_igv" => (double)$value["cantidad"] * (double)$value["precio"],
+                "porcentaje_igv" => 18,
+                "total_igv" => 0,
+                "total_impuestos" => 0,
+                "total_valor_item" => $value["cantidad"] * $value["precio"],
+                "total_item" => $value["cantidad"] * $value["precio"],
+            ];
         }
 
-
-
-     
-$data = array(
-
-  "serie_documento"=> $venta["serie"],
-
-  "numero_documento"=>$venta["documento"],
-
-  "fecha_de_emision"=>  $venta["fecha"],
-
-  "hora_de_emision"=>  $venta["hora"],
-
-  "codigo_tipo_operacion"=>  "0101",
-
-  "codigo_tipo_documento"=>$venta["codigo_documento"],
-
-  "codigo_tipo_moneda"=>  "PEN",
-
-  "fecha_de_vencimiento"=>  $venta["fecha"],
-
-  "numero_orden_de_compra"=>  $venta["id"],
-
-  "datos_del_emisor"=>  array(
-
-    "codigo_pais"=>  "PE",
-
-    "ubigeo"=>  "220901",
-
-    "direccion"=>  $empresa["empresa_direccion"],
-
-    "correo_electronico"=>  $empresa["empresa_correo"],
-
-    "telefono"=> $empresa["empresa_telefono"],
-
-    "codigo_del_domicilio_fiscal"=>  "0000"
-
-  ),  
-
-  "datos_del_cliente_o_receptor"=>array(
-
-    "codigo_tipo_documento_identidad"=> $venta["tam_dni"],
-
-    "numero_documento"=> $venta["documento_dni"],
-
-    "apellidos_y_nombres_o_razon_social"=>$venta["cliente"],
-
-    "codigo_pais"=> "PE",
-
-    "ubigeo"=>"220901",
-
-    "direccion"=> $venta["direccion"],
-
-    "correo_electronico"=>$venta["correo"],
-
-    "telefono"=>"933122626"
-
-  ), "totales"=>array(
-
-    "total_exportacion"=> 0.00,
-
-    "total_operaciones_gravadas"=> 0.00,
-
-    "total_operaciones_inafectas"=> 0.00,
-
-    "total_operaciones_exoneradas"=>$venta["venta_monto"],
-
-    "total_operaciones_gratuitas"=> 0.00,
-
-    "total_igv"=>0.00,
-
-    "total_impuestos"=> 0.00,
-
-    "total_valor"=> $venta["venta_monto"],
-
-    "total_venta"=> $venta["venta_monto"]
-
-  )
-
-,
-
-
-
-   "items"=>$detalle,
-
-   "informacion_adicional"=> "OBSERVACIÓN: ".$venta["venta_observaciones"]."|EMITIDO POR:|".$venta["empleado_nombres"]."|".$venta["empleado_usuario"]
-
-);
-
-
-
-
-
-//print_r($data);exit();
-
-$data_json = json_encode($data); 
-
-$curl = curl_init();
-
-
-
-curl_setopt_array($curl, array(
-
-  CURLOPT_URL => $ruta ,
-
-  CURLOPT_RETURNTRANSFER => true,
-
-  CURLOPT_ENCODING => "",
-
-  CURLOPT_MAXREDIRS => 10,
-
-  CURLOPT_TIMEOUT => 30,
-
-  CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-
-  CURLOPT_CUSTOMREQUEST => "POST",
-
-  CURLOPT_POSTFIELDS => $data_json,
-
-  CURLOPT_HTTPHEADER => array(
-
-    "authorization: Bearer ".$token,
-
-    "cache-control: no-cache",
-
-    "content-type: application/json",
-
-   
-
-  ),
-
-));
-
-
-
-$response = curl_exec($curl);
-
-$err = curl_error($curl);
-
-
-
-curl_close($curl);
-
-
-
-if ($err) {
-
-  echo "cURL Error #:" . $err;
-
-} else {
-
-   $json=json_decode($response,true);
-
-  //print_r($json);
-
-
-
-
-
-     $filename = $json["links"]["pdf"]; 
-
-   // $origen   = fopen($filename, 'r');
-
-    //$nombre_pdf=$this->generar_token_seguro(30);
-
-   // $destino1 = fopen('public/factura/'.$nombre_pdf.'.pdf', 'w');
-
-
-
-     //stream_copy_to_stream($origen, $destino1); 
-
-
-
-
-
-   $data=array(
-
-       "venta_pdf_facturacion"=>$json["links"]["pdf"],
-
-       "venta_xml_facturacion"=>$json["links"]["xml"],
-
-       "venta_cdr_facturacion"=>$json["links"]["cdr"],
-
-      // "venta_ticket_facturacion"=>$nombre_pdf,
-
-       "venta_ticket_external_id"=>$json["data"]["external_id"],
-       "venta_qr"=>$json["data"]["qr"],
-
-       "venta_hash"=>$json["data"]["hash"],
-       "venta_number_to_letter"=>$json["data"]["number_to_letter"]
-
-
-   );
-
-
-
-     $this->db->where("venta_idventas",$id);
-
-     $r = $this->db->update("venta",$data);
-//print_r($json);exit();
-
-
-
-     return $json["links"]["pdf"];
-
-
-  // echo json_encode($json);exit();
-
+        $data = [
+            "serie_documento" => $venta["serie"],
+            "numero_documento" => "#",
+            "fecha_de_emision" => $venta["fecha"],
+            "hora_de_emision" => $venta["hora"],
+            "codigo_tipo_operacion" => "0101",
+            "codigo_tipo_documento" => $venta["codigo_documento"],
+            "codigo_tipo_moneda" => "PEN",
+            "fecha_de_vencimiento" => $venta["fecha"],
+            "numero_orden_de_compra" => $venta["id"],
+            "datos_del_emisor" => [
+                "codigo_pais" => "PE",
+                "ubigeo" => "220901",
+                "direccion" => $empresa["empresa_direccion"],
+                "correo_electronico" => $empresa["empresa_correo"],
+                "telefono" => $empresa["empresa_telefono"],
+                "codigo_del_domicilio_fiscal" => "0000"
+            ],
+            "datos_del_cliente_o_receptor" => [
+                "codigo_tipo_documento_identidad" => $venta["tam_dni"],
+                "numero_documento" => $venta["documento_dni"],
+                "apellidos_y_nombres_o_razon_social" => $venta["cliente"],
+                "codigo_pais" => "PE",
+                "ubigeo" => "220901",
+                "direccion" => $venta["direccion"],
+                "correo_electronico" => $venta["correo"],
+                "telefono" => "933122626"
+            ],
+            "totales" => [
+                "total_exportacion" => 0.00,
+                "total_operaciones_gravadas" => 0.00,
+                "total_operaciones_inafectas" => 0.00,
+                "total_operaciones_exoneradas" => $venta["venta_monto"],
+                "total_operaciones_gratuitas" => 0.00,
+                "total_igv" => 0.00,
+                "total_impuestos" => 0.00,
+                "total_valor" => $venta["venta_monto"],
+                "total_venta" => $venta["venta_monto"]
+            ],
+            "items" => $detalle,
+            "informacion_adicional" => "OBSERVACIÓN: " . $venta["venta_observaciones"] . "|EMITIDO POR:|" . $venta["empleado_nombres"] . "|" . $venta["empleado_usuario"]
+        ];
+
+        $data_json = json_encode($data);
+
+        $curl = curl_init();
+        curl_setopt_array($curl, [
+            CURLOPT_URL => $ruta,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_ENCODING => "",
+            CURLOPT_MAXREDIRS => 10,
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+            CURLOPT_CUSTOMREQUEST => "POST",
+            CURLOPT_POSTFIELDS => $data_json,
+            CURLOPT_HTTPHEADER => [
+                "authorization: Bearer " . $token,
+                "cache-control: no-cache",
+                "content-type: application/json"
+            ],
+        ]);
+
+        $response = curl_exec($curl);
+        $err = curl_error($curl);
+        curl_close($curl);
+
+        if ($err) {
+            throw new Exception("cURL Error: " . $err);
+        }
+
+        $json = json_decode($response, true);
+
+        if (!isset($json["data"]["number"])) {
+            throw new Exception("Respuesta inválida. No se encontró 'data.number'");
+        }
+
+        $number = $json["data"]["number"];
+        list($serie, $correlativo) = explode('-', $number);
+
+        $data_update = [
+            "venta_pdf_facturacion" => $json["links"]["pdf"] ?? null,
+            "venta_xml_facturacion" => $json["links"]["xml"] ?? null,
+            "venta_cdr_facturacion" => $json["links"]["cdr"] ?? null,
+            "venta_ticket_external_id" => $json["data"]["external_id"] ?? null,
+            "venta_qr" => $json["data"]["qr"] ?? null,
+            "venta_hash" => $json["data"]["hash"] ?? null,
+            "venta_number_to_letter" => $json["data"]["number_to_letter"] ?? null,
+            "venta_num_serie" => $serie,
+            "venta_num_documento" => $correlativo,
+            "venta_ticket_facturacion" => $json["data"]["print_ticket"]
+        ];
+
+        $this->db->where("venta_idventas", $id);
+        $this->db->update("venta", $data_update);
+
+        // Actualiza la tabla documento: si doc_serie coincide con $serie, actualiza doc_correlativo
+        $sql_doc = "UPDATE documento SET doc_correlativo = ? WHERE doc_serie = ?";
+        $this->db->query($sql_doc, [$correlativo, $serie]);
+
+        $sql_mov = "UPDATE movimiento SET tipo_comprobante_descripcion = ? WHERE venta_idventas = ?";
+        $this->db->query($sql_mov, [$serie . '-' . $correlativo, $id]);
+
+        return $json;
+    } catch (Exception $e) {
+        log_message('error', 'Error en facturación electrónica: ' . $e->getMessage());
+        return json_encode([
+            "success" => false,
+            "message" => "Error en facturación electrónica: " . $e->getMessage()
+        ]);
+    }
 }
 
 
-
-
-}
 public function vista($cuerpo,$data=array()){
   if(!isset($_COOKIE["config_usuario"])|| $_COOKIE["config_usuario"]==""){
     header('Location: '.base_url());
