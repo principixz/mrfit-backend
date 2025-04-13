@@ -126,7 +126,7 @@ public function facturacion_electronica($id)
         ];
 
         $data_json = json_encode($data);
-print_r($data_json);
+
         $curl = curl_init();
         curl_setopt_array($curl, [
             CURLOPT_URL => $ruta,

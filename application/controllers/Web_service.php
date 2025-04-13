@@ -1752,8 +1752,6 @@ public function procesar_venta_pago()
         }
         if((int)$id_tipo_comprobante!=6){
           $datos_facturacion = $this->facturacion_electronica($id_venta);
-          print_r($datos_facturacion);
-          $this->db->trans_rollback();
           $response["facturacion"] = $datos_facturacion["data"]["print_ticket"];
         }
         $this->db->trans_commit(); // Comentar temporalmente
