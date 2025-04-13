@@ -4241,6 +4241,7 @@ $data_token = json_decode($this->consultar_token(),true);
             $nestedData['serie'] =$post->venta_num_serie.'-'.$post->venta_num_documento;
             $nestedData['pdf'] =$post->venta_pdf_facturacion;
             $nestedData['xml'] =$post->venta_xml_facturacion;
+            $nestedData['ticket'] = $post->venta_ticket_facturacion;
             $nestedData['cdr'] =$post->venta_cdr_facturacion;
             $nestedData['estado'] =(int)$post->venta_estado;
 
