@@ -160,7 +160,7 @@ public function facturacion_electronica($id)
             throw new Exception("Respuesta inválida. No se encontró 'data.number'");
         }
         $document_id = $json["data"]["id"];
-        $result_store = $this->store_cash_document($document_id,$rutadocuments,$token);
+        //$result_store = $this->store_cash_document($document_id,$rutadocuments,$token);
 
         $number = $json["data"]["number"];
         list($serie, $correlativo) = explode('-', $number);
