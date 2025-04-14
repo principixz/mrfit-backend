@@ -26,6 +26,7 @@ public function facturacion_electronica($id)
         $request = json_decode($postdata, true);
         $response = [];
 
+        $rutadocuments = $empresa["empresa_link_facturacion"] . 'api/cash/store-cash-document';
         $ruta = $empresa["empresa_link_facturacion"] . 'api/documents';
         $token = $empresa["empresa_token_facturacion"];
 
@@ -152,11 +153,14 @@ public function facturacion_electronica($id)
             throw new Exception("cURL Error: " . $err);
         }
 
+
         $json = json_decode($response, true);
 
         if (!isset($json["data"]["number"])) {
             throw new Exception("Respuesta inválida. No se encontró 'data.number'");
         }
+        $document_id = $json["data"]["id"];
+        $result_store = $this->store_cash_document($document_id,$rutadocuments,$token);
 
         $number = $json["data"]["number"];
         list($serie, $correlativo) = explode('-', $number);
@@ -190,6 +194,52 @@ public function facturacion_electronica($id)
         return json_encode([
             "success" => false,
             "message" => "Error en facturación electrónica: " . $e->getMessage()
+        ]);
+    }
+}
+
+public function store_cash_document($document_id, $url, $token){
+    try {
+        $data = [
+            "document_id" => $document_id
+        ];
+        $data_json = json_encode($data);
+ 
+        $authorization = "Bearer " . $token; // Reemplazar •••••• por el token real o la variable correspondiente
+
+        $curl = curl_init();
+
+        curl_setopt_array($curl, [
+            CURLOPT_URL => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_ENCODING => "",
+            CURLOPT_MAXREDIRS => 10,
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+            CURLOPT_CUSTOMREQUEST => "POST",
+            CURLOPT_POSTFIELDS => $data_json,
+            CURLOPT_HTTPHEADER => [
+                "Content-Type: application/json",
+                "Authorization: " . $authorization
+            ],
+        ]);
+
+        $response = curl_exec($curl);
+        $err = curl_error($curl);
+        curl_close($curl);
+
+        if ($err) {
+            throw new Exception("cURL Error in store_cash_document: " . $err);
+        }
+
+        // Decodificar la respuesta (si es JSON)
+        $result = json_decode($response, true);
+        return $result;
+    } catch (Exception $e) {
+        log_message('error', 'Error en store_cash_document: ' . $e->getMessage());
+        return json_encode([
+            "success" => false,
+            "message" => "Error en store_cash_document: " . $e->getMessage()
         ]);
     }
 }
