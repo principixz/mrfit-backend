@@ -101,6 +101,14 @@ public function facturacion_electronica($id)
                 "telefono" => $empresa["empresa_telefono"],
                 "codigo_del_domicilio_fiscal" => "0000"
             ],
+            "pagos" => [
+                [
+                    "fecha_de_emision" => $venta["fecha"],
+                    "codigo_metodo_pago" => "01",
+                    "codigo_destino_pago" => "cash",
+                    "monto" => $venta["venta_monto"]
+                ]
+            ],
             "datos_del_cliente_o_receptor" => [
                 "codigo_tipo_documento_identidad" => $venta["tam_dni"],
                 "numero_documento" => $venta["documento_dni"],
@@ -160,7 +168,7 @@ public function facturacion_electronica($id)
             throw new Exception("Respuesta inválida. No se encontró 'data.number'");
         }
         $document_id = $json["data"]["id"];
-        //$result_store = $this->store_cash_document($document_id,$rutadocuments,$token);
+        $result_store = $this->store_cash_document($document_id,$rutadocuments,$token);
 
         $number = $json["data"]["number"];
         list($serie, $correlativo) = explode('-', $number);
