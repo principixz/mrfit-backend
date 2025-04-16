@@ -32,6 +32,13 @@ public function facturacion_electronica($id)
 
         // Obtener datos de venta
         $sql = "SELECT venta.venta_idventas as 'id', venta.venta_num_serie as 'serie', venta.venta_num_documento as 'documento',
+        venta.venta_num_documento as 'documento',
+            CASE 
+                WHEN venta.venta_formapago = 1 THEN '01'
+                WHEN venta.venta_formapago = 5 THEN '03'
+                WHEN venta.venta_formapago = 6 THEN '02'
+                ELSE '01'
+            END as formapago,
             DATE_FORMAT(venta.venta_pedidofecha,'%Y-%m-%d') as 'fecha',
             TIME(venta.venta_pedidofecha) as 'hora',
             if(ventas_idtipodocumento=1,'01','03') as 'codigo_documento',
@@ -104,7 +111,7 @@ public function facturacion_electronica($id)
             "pagos" => [
                 [
                     "fecha_de_emision" => $venta["fecha"],
-                    "codigo_metodo_pago" => "01",
+                    "codigo_metodo_pago" => $venta["formapago"],
                     "codigo_destino_pago" => "cash",
                     "monto" => $venta["venta_monto"]
                 ]
